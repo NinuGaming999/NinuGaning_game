@@ -9,22 +9,18 @@ import {
 const MAX_LEADERBOARD = 200;
 const MAX_LIVE_ROLLS = 30;
 
-function nameKey(name) {
-  return String(name || '').trim().toLowerCase();
-}
-
-// Dedupe both the new username-keyed records and any old JSONBin-era records
-// that might still be present in Firebase. For duplicate names, keep only the
-// highest melt-damage score.
+// Display only the new username-keyed schema. This prevents old random-ID
+// JSONBin-era records from creating duplicate rows after the migration.
 function dedupeUsers(entries) {
   const bestByUser = new Map();
 
   for (const entry of entries) {
-    if (!entry?.playerName) continue;
-    const key = entry.userId || nameKey(entry.playerName);
-    const existing = bestByUser.get(key);
+    if (!entry?.playerName || !entry?.userId) continue;
+
+    const userId = entry.userId;
+    const existing = bestByUser.get(userId);
     if (!existing || (Number(entry.meltDamage) || 0) > (Number(existing.meltDamage) || 0)) {
-      bestByUser.set(key, entry);
+      bestByUser.set(userId, entry);
     }
   }
 
@@ -82,17 +78,18 @@ export function useLeaderboard() {
   const submitRoll = useCallback(async (entry) => {
     const userId = getUserIdFromName(entry.playerName);
     const current = dataRef.current;
-    const existing = current.leaderboard.find(
-      (item) => (item.userId || getUserIdFromName(item.playerName)) === userId,
-    );
+    const existing = current.leaderboard.find((item) => item.userId === userId);
 
-    // Optimistically replace this user's record only when the new roll is better.
-    // This prevents duplicate rows while Firebase processes the transaction.
-    const shouldReplace = !existing || (Number(entry.meltDamage) || 0) > (Number(existing.meltDamage) || 0);
+    // Optimistic update uses the deterministic user ID, so repeated rolls for
+    // the same name replace one row rather than creating duplicates.
+    const shouldReplace =
+      !existing || (Number(entry.meltDamage) || 0) > (Number(existing.meltDamage) || 0);
+
     const newLeaderboard = shouldReplace
-      ? dedupeUsers([...current.leaderboard.filter(
-          (item) => (item.userId || getUserIdFromName(item.playerName)) !== userId,
-        ), { ...entry, id: userId, userId }])
+      ? dedupeUsers([
+          ...current.leaderboard.filter((item) => item.userId !== userId),
+          { ...entry, id: userId, userId },
+        ])
       : current.leaderboard;
 
     const optimisticLive = {
@@ -103,6 +100,7 @@ export function useLeaderboard() {
       meltDamage: entry.meltDamage,
       rarity: entry.rarity,
     };
+
     const newLiveRolls = [optimisticLive, ...current.liveRolls]
       .sort((a, b) => (Number(b.timestamp) || 0) - (Number(a.timestamp) || 0))
       .slice(0, MAX_LIVE_ROLLS);
@@ -114,14 +112,12 @@ export function useLeaderboard() {
     try {
       const result = await saveRoll(entry);
 
-      // Firebase is authoritative. Reconcile the user's leaderboard row with
-      // the transaction result, especially when someone submitted a lower score.
+      // Firebase is authoritative. If the submitted score was not the user's
+      // best, restore the existing high score returned by the transaction.
       if (result?.leaderboardEntry) {
         const authoritative = result.leaderboardEntry;
         const reconciled = dedupeUsers([
-          ...dataRef.current.leaderboard.filter(
-            (item) => (item.userId || getUserIdFromName(item.playerName)) !== userId,
-          ),
+          ...dataRef.current.leaderboard.filter((item) => item.userId !== userId),
           authoritative,
         ]);
         dataRef.current = { ...dataRef.current, leaderboard: reconciled };
