@@ -1,0 +1,18 @@
+{
+  "rules": {
+    ".read": true,
+    ".write": false,
+    "leaderboard": {
+      "$rollId": {
+        ".write": "newData.exists() && !data.exists()",
+        ".validate": "newData.hasChildren(['id','playerName','meltDamage','physicalDamage','timestamp','rarity','artifacts']) && newData.child('id').isString() && newData.child('playerName').isString() && newData.child('playerName').val().length >= 1 && newData.child('playerName').val().length <= 32 && newData.child('meltDamage').isNumber() && newData.child('meltDamage').val() >= 0 && newData.child('meltDamage').val() <= 1000000 && newData.child('physicalDamage').isNumber() && newData.child('physicalDamage').val() >= 0 && newData.child('physicalDamage').val() <= 1000000 && newData.child('timestamp').isNumber() && newData.child('timestamp').val() >= 0 && newData.child('rarity').isString() && newData.child('artifacts').hasChildren(['totalATK','critRate','critDmg','pyroDmg','pieces'])"
+      }
+    },
+    "liveRolls": {
+      "$rollId": {
+        ".write": "newData.exists() && !data.exists()",
+        ".validate": "newData.hasChildren(['id','playerName','timestamp','meltDamage','rarity']) && newData.child('id').isString() && newData.child('playerName').isString() && newData.child('playerName').val().length >= 1 && newData.child('playerName').val().length <= 32 && newData.child('timestamp').isNumber() && newData.child('timestamp').val() >= 0 && newData.child('meltDamage').isNumber() && newData.child('meltDamage').val() >= 0 && newData.child('meltDamage').val() <= 1000000 && newData.child('rarity').isString()"
+      }
+    }
+  }
+}
