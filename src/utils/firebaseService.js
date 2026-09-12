@@ -71,8 +71,8 @@ export async function saveRoll(entry) {
   };
 
   // Transaction guarantees that concurrent rolls from the same username cannot
-  // overwrite a better score. The stored leaderboard record is replaced only
-  // when the new meltDamage is strictly higher (equal scores keep the old record).
+  // overwrite a better score. The stored leaderboard record changes only when
+  // the new Melt Damage is strictly higher. Equal scores keep the existing best.
   const transactionResult = await userRef.transaction((current) => {
     if (!current) return submittedEntry;
 
@@ -86,19 +86,17 @@ export async function saveRoll(entry) {
   const currentEntry = transactionResult.snapshot.val() || null;
   const saved = transactionResult.committed;
 
-  // The observer feed remains a history of actual rolls, so a lower roll can
-  // still appear there even though it cannot replace the user's leaderboard best.
-  if (saved) {
-    const liveKey = database.ref('liveRolls').push().key;
-    await database.ref(`liveRolls/${liveKey}`).set({
-      id: liveKey,
-      userId,
-      playerName: entry.playerName,
-      timestamp: entry.timestamp,
-      meltDamage: entry.meltDamage,
-      rarity: entry.rarity,
-    });
-  }
+  // Every actual roll can still appear in the observer feed, even when it does
+  // not beat the player's leaderboard high score.
+  const liveKey = database.ref('liveRolls').push().key;
+  await database.ref(`liveRolls/${liveKey}`).set({
+    id: liveKey,
+    userId,
+    playerName: entry.playerName,
+    timestamp: entry.timestamp,
+    meltDamage: entry.meltDamage,
+    rarity: entry.rarity,
+  });
 
   return {
     saved,
