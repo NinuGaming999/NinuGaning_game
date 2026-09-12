@@ -21,45 +21,90 @@ const database = window.firebase.database(app);
 const LEADERBOARD_LIMIT = 200;
 const LIVE_ROLL_LIMIT = 30;
 
+// One deterministic Firebase key per username. Encoding makes the key safe for
+// Firebase even when a name contains spaces, slashes, dots, brackets, etc.
+// Normalization is case-insensitive, so "Ninu" and "ninu" are the same user.
+export function getUserIdFromName(name) {
+  const normalized = String(name || '').trim().toLowerCase();
+  return encodeURIComponent(normalized).replace(/\./g, '%2E');
+}
+
 function normalizeSnapshot(snapshot) {
   const value = snapshot.val() || {};
   return Object.entries(value).map(([key, entry]) => ({
     ...entry,
     id: entry?.id || key,
+    userId: entry?.userId || key,
   }));
 }
 
 export function subscribeToLeaderboard(onData, onError) {
-  const ref = database.ref('leaderboard').limitToLast(LEADERBOARD_LIMIT);
+  // Only fetch the highest 200 scores. The listener remains realtime.
+  const ref = database
+    .ref('leaderboard')
+    .orderByChild('meltDamage')
+    .limitToLast(LEADERBOARD_LIMIT);
   const handler = (snapshot) => onData(normalizeSnapshot(snapshot));
   ref.on('value', handler, onError);
   return () => ref.off('value', handler);
 }
 
 export function subscribeToLiveRolls(onData, onError) {
-  const ref = database.ref('liveRolls').limitToLast(LIVE_ROLL_LIMIT);
+  const ref = database
+    .ref('liveRolls')
+    .orderByChild('timestamp')
+    .limitToLast(LIVE_ROLL_LIMIT);
   const handler = (snapshot) => onData(normalizeSnapshot(snapshot));
   ref.on('value', handler, onError);
   return () => ref.off('value', handler);
 }
 
 export async function saveRoll(entry) {
-  const key = entry.id || database.ref('leaderboard').push().key;
-  const leaderboardEntry = { ...entry, id: key };
-  const liveEntry = {
-    id: key,
-    playerName: entry.playerName,
-    timestamp: entry.timestamp,
-    meltDamage: entry.meltDamage,
-    rarity: entry.rarity,
+  const userId = getUserIdFromName(entry.playerName);
+  if (!userId) throw new Error('A valid player name is required.');
+
+  const userRef = database.ref(`leaderboard/${userId}`);
+  const submittedEntry = {
+    ...entry,
+    id: userId,
+    userId,
   };
 
-  // Push to separate paths in one atomic multi-location update. Unlike the old
-  // JSONBin read-modify-write flow, simultaneous users cannot overwrite each other.
-  await database.ref().update({
-    [`leaderboard/${key}`]: leaderboardEntry,
-    [`liveRolls/${key}`]: liveEntry,
+  // Transaction guarantees that concurrent rolls from the same username cannot
+  // overwrite a better score. The stored leaderboard record is replaced only
+  // when the new meltDamage is strictly higher (equal scores keep the old record).
+  const transactionResult = await userRef.transaction((current) => {
+    if (!current) return submittedEntry;
+
+    const oldScore = Number(current.meltDamage) || 0;
+    const newScore = Number(entry.meltDamage) || 0;
+
+    if (newScore <= oldScore) return;
+    return submittedEntry;
   });
+
+  const currentEntry = transactionResult.snapshot.val() || null;
+  const saved = transactionResult.committed;
+
+  // The observer feed remains a history of actual rolls, so a lower roll can
+  // still appear there even though it cannot replace the user's leaderboard best.
+  if (saved) {
+    const liveKey = database.ref('liveRolls').push().key;
+    await database.ref(`liveRolls/${liveKey}`).set({
+      id: liveKey,
+      userId,
+      playerName: entry.playerName,
+      timestamp: entry.timestamp,
+      meltDamage: entry.meltDamage,
+      rarity: entry.rarity,
+    });
+  }
+
+  return {
+    saved,
+    userId,
+    leaderboardEntry: currentEntry,
+  };
 }
 
 export function getDatabase() {
