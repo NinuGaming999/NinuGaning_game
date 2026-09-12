@@ -1,6 +1,16 @@
 # Artifact Roll Simulator — NINU Gaming
 
-A one-page React app for YouTube viewers to roll for Arlecchino damage stats, see them ranked on a live, shared leaderboard, and watch other viewers' rolls come in in real time. The shared backend is Firebase Realtime Database.
+A one-page React app for YouTube viewers to roll for Arlecchino damage stats, see them ranked on a live shared leaderboard, and watch other viewers' rolls arrive in real time. The shared backend is Firebase Realtime Database.
+
+## Leaderboard behavior
+
+Every player name maps to one deterministic Firebase user ID. The ID is derived from the trimmed, lowercase version of the name, so the same name always maps to the same leaderboard record and capitalization does not create a second player.
+
+A player can roll unlimited times, but the leaderboard stores only that player's **highest Melt Damage score**. A lower or equal score never replaces the saved best score. Concurrent rolls from the same player are protected with a Firebase transaction, so two tabs cannot race and accidentally overwrite a better score.
+
+The observer feed is separate: it can still show recent rolls even when a roll does not beat the player's leaderboard record.
+
+The leaderboard listener requests the highest 200 scores in real time, while the observer feed listens to the latest 30 rolls by timestamp.
 
 ## What's inside
 
@@ -8,9 +18,9 @@ A one-page React app for YouTube viewers to roll for Arlecchino damage stats, se
 - `src/utils/artifactRoller.js` — rolls a full 5-piece set and aggregates totals.
 - `src/utils/damageCalculator.js` — physical + melt damage formulas.
 - `src/utils/rarityBadge.js` — melt damage → rarity tier.
-- `src/utils/firebaseService.js` — Firebase Realtime Database connection, realtime subscriptions, and atomic writes.
-- `src/hooks/useLeaderboard.js` — listens for Firebase push updates instead of polling.
-- `src/hooks/useObserverFeed.js` — derives the last 60 seconds / max 10 live feed.
+- `src/utils/firebaseService.js` — Firebase connection, username IDs, realtime subscriptions, and highest-score transactions.
+- `src/hooks/useLeaderboard.js` — realtime leaderboard state, duplicate-name cleanup, and optimistic UI reconciliation.
+- `src/hooks/useObserverFeed.js` — derives the last 60 seconds / max 10 visible live feed.
 - `src/components/Desktop.jsx` / `Mobile.jsx` — responsive layouts.
 
 ## Realistic artifact rules (per slot)
@@ -27,26 +37,35 @@ A stat cannot be both the main stat and a substat on the same piece. Elemental/P
 
 ## Firebase setup
 
-The app is already configured for the Firebase project used by this repository. The browser Firebase configuration is stored in `src/utils/firebaseService.js`; these web configuration values identify the Firebase project and are not Firebase Admin credentials.
+The browser Firebase configuration is stored in `src/utils/firebaseService.js` using the Firebase project supplied for this app. No Firebase Admin SDK credential is used.
 
 ### Realtime Database rules
 
 The repository contains `database.rules.json`. In the Firebase Console, open **Realtime Database → Rules**, replace the existing rules with the contents of `database.rules.json`, and click **Publish**.
 
-The rules allow public reads and new roll creation while rejecting overwrites and enforcing basic data shape/range checks. This is intentionally a simple public leaderboard; the client-side damage calculation is not treated as a cryptographic anti-cheat system.
+The rules allow public reads, validate leaderboard entries, require the Firebase key/id to match the generated user ID, allow a leaderboard record to change only when the new score is higher, and index the score/timestamp queries.
+
+## Why the leaderboard no longer duplicates users
+
+The old implementation created a fresh random leaderboard ID for every roll. The current implementation instead uses:
+
+`leaderboard/{deterministicUserId}`
+
+The deterministic ID is derived from the player's name. When that same player rolls again, Firebase updates the same record only if the new Melt Damage is strictly higher.
+
+For example, these all refer to the same user:
+
+```text
+Ninu
+ninu
+NINU
+```
+
+The displayed name from the winning roll is retained in the leaderboard record.
 
 ## Why Firebase replaced JSONBin
 
-The previous implementation repeatedly downloaded the entire JSONBin document and then performed read-modify-write updates. With many viewers, that created unnecessary request traffic and concurrent writes could overwrite one another.
-
-Firebase Realtime Database now:
-
-- pushes changes to connected viewers instead of polling every few seconds;
-- stores leaderboard entries individually instead of rewriting one giant document;
-- uses an atomic multi-location write for each roll, so simultaneous users do not overwrite each other's rolls;
-- keeps the observer feed and leaderboard as separate realtime collections.
-
-The old `src/utils/jsonbinService.js` is no longer used by the application.
+The previous implementation repeatedly downloaded and rewrote one large JSON document. Firebase Realtime Database now pushes changes to connected viewers, stores users individually, and uses transactions for the one-user/highest-score rule.
 
 ## Local setup
 
@@ -63,13 +82,13 @@ Then open the Vite URL printed in the terminal.
 npm run build
 ```
 
-No JSONBin environment variables are required anymore. In particular, you no longer need `VITE_JSONBIN_ID`, `VITE_JSONBIN_KEY`, or `VITE_FETCH_INTERVAL`.
+No JSONBin environment variables are required anymore. You no longer need `VITE_JSONBIN_ID`, `VITE_JSONBIN_KEY`, or `VITE_FETCH_INTERVAL`.
 
 ## Deploying to Vercel
 
 Import `NinuGaming999/NinuGaning_game` into Vercel and deploy it as a Vite project. No Firebase secret or GitHub token needs to be added to Vercel for the current client-side Firebase configuration.
 
-After deploying, make sure the Firebase Realtime Database rules from `database.rules.json` have been published in the Firebase Console.
+After deploying, make sure the Firebase Realtime Database rules from `database.rules.json` are published in the Firebase Console.
 
 ## Notes on game-math assumptions
 
