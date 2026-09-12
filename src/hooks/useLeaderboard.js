@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { fetchBinData, saveBinData } from '../utils/jsonbinService';
-
-const FETCH_INTERVAL = Number(import.meta.env.VITE_FETCH_INTERVAL) || 2000;
-const MAX_LEADERBOARD_STORED = 200;
-const MAX_LIVE_ROLLS_STORED = 30;
+import {
+  saveRoll,
+  subscribeToLeaderboard,
+  subscribeToLiveRolls,
+} from '../utils/firebaseService';
 
 /**
- * Polls JSONbin every FETCH_INTERVAL ms for the current leaderboard +
- * live-roll feed, and exposes submitRoll() to push a new roll to everyone.
+ * Firebase Realtime Database-backed leaderboard.
+ *
+ * Unlike the old JSONBin implementation, this never performs a read-modify-write
+ * of the entire leaderboard and never polls. Firebase pushes changes to every
+ * connected client and atomic multi-location writes prevent concurrent rolls
+ * from overwriting one another.
  */
 export function useLeaderboard() {
   const [leaderboard, setLeaderboard] = useState([]);
@@ -16,59 +20,73 @@ export function useLeaderboard() {
   const [error, setError] = useState(null);
   const dataRef = useRef({ leaderboard: [], liveRolls: [] });
 
-  const load = useCallback(async () => {
-    try {
-      const data = await fetchBinData();
-      const lb = data?.leaderboard || [];
-      const lr = data?.liveRolls || [];
-      dataRef.current = { leaderboard: lb, liveRolls: lr };
-      setLeaderboard(lb);
-      setLiveRolls(lr);
+  useEffect(() => {
+    let leaderboardReady = false;
+    let liveReady = false;
+
+    const onLeaderboard = (entries) => {
+      const sorted = entries
+        .sort((a, b) => (b.meltDamage || 0) - (a.meltDamage || 0));
+      dataRef.current = { ...dataRef.current, leaderboard: sorted };
+      setLeaderboard(sorted);
+      leaderboardReady = true;
+      if (leaderboardReady && liveReady) setLoading(false);
       setError(null);
-    } catch (err) {
-      setError('Leaderboard temporarily unavailable.');
-    } finally {
+    };
+
+    const onLiveRolls = (entries) => {
+      const sorted = entries
+        .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      dataRef.current = { ...dataRef.current, liveRolls: sorted };
+      setLiveRolls(sorted);
+      liveReady = true;
+      if (leaderboardReady && liveReady) setLoading(false);
+      setError(null);
+    };
+
+    const onError = () => {
       setLoading(false);
-    }
+      setError('Leaderboard temporarily unavailable.');
+    };
+
+    const unsubscribeLeaderboard = subscribeToLeaderboard(onLeaderboard, onError);
+    const unsubscribeLiveRolls = subscribeToLiveRolls(onLiveRolls, onError);
+
+    return () => {
+      unsubscribeLeaderboard();
+      unsubscribeLiveRolls();
+    };
   }, []);
 
-  useEffect(() => {
-    load();
-    const interval = setInterval(load, FETCH_INTERVAL);
-    return () => clearInterval(interval);
-  }, [load]);
-
   const submitRoll = useCallback(async (entry) => {
+    // Optimistic update keeps the UI instant while Firebase performs the write.
     const current = dataRef.current;
-
     const newLeaderboard = [entry, ...current.leaderboard]
       .sort((a, b) => b.meltDamage - a.meltDamage)
-      .slice(0, MAX_LEADERBOARD_STORED);
-
+      .slice(0, 200);
     const newLiveRolls = [
       {
+        id: entry.id,
         playerName: entry.playerName,
         timestamp: entry.timestamp,
         meltDamage: entry.meltDamage,
         rarity: entry.rarity,
       },
       ...current.liveRolls,
-    ].slice(0, MAX_LIVE_ROLLS_STORED);
+    ].slice(0, 30);
 
-    const newData = { leaderboard: newLeaderboard, liveRolls: newLiveRolls };
-
-    // Optimistic local update so the roller sees their own result instantly.
-    dataRef.current = newData;
+    dataRef.current = { leaderboard: newLeaderboard, liveRolls: newLiveRolls };
     setLeaderboard(newLeaderboard);
     setLiveRolls(newLiveRolls);
 
     try {
-      await saveBinData(newData);
+      await saveRoll(entry);
       setError(null);
     } catch (err) {
-      setError('Leaderboard temporarily unavailable. Your roll was saved locally.');
+      console.error('Firebase leaderboard write failed:', err);
+      setError('Leaderboard temporarily unavailable. Please try again.');
     }
   }, []);
 
-  return { leaderboard, liveRolls, loading, error, submitRoll, refetch: load };
+  return { leaderboard, liveRolls, loading, error, submitRoll, refetch: () => {} };
 }
