@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import Desktop from './components/Desktop';
 import Mobile from './components/Mobile';
 import GameHub from './components/GameHub';
-import RacingGame from './racing/RacingGame';
+import RacingGame from './racing/RacingGameV2';
 import { useResponsive } from './hooks/useResponsive';
 import { useLeaderboard } from './hooks/useLeaderboard';
 import { useObserverFeed } from './hooks/useObserverFeed';
