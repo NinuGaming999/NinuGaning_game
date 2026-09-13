@@ -9,6 +9,18 @@ body {
   margin: 0;
 }
 
+button,
+input {
+  font: inherit;
+}
+
+.touch-control {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -40,6 +52,11 @@ body {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+@keyframes roadPulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
 }
 
 ::-webkit-scrollbar {
