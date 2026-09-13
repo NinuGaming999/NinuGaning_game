@@ -95,6 +95,15 @@ export async function createOrJoinDeterministicMatch(a, b, aName, bName) {
     };
   });
 
+  // Seed both participant slots as ready. This makes matchmaking deterministic:
+  // either browser can create the room and the room can immediately start its
+  // synchronized countdown without waiting for a React render cycle.
+  await db.ref(`racingMatches/${matchId}/states`).update({
+    [firstId]: { userId: firstId, ready: true, distance: 0, lane: 0, speed: 0, finished: false },
+    [secondId]: { userId: secondId, ready: true, distance: 0, lane: 0, speed: 0, finished: false },
+  });
+
+  await startMatchIfReady(matchId);
   return matchId;
 }
 
