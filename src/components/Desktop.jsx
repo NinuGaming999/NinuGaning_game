@@ -17,20 +17,18 @@ export default function Desktop({
   loading,
   error,
   liveRolls,
+  onBack,
 }) {
   return (
     <div className="h-screen bg-[#1A1A1A] flex flex-col overflow-hidden">
-      <Header />
+      <Header onBack={onBack} />
 
       <div className="flex flex-1 min-h-0">
         <div className="w-[60%] flex flex-col items-center gap-5 p-8 overflow-y-auto">
           <NameInput value={playerName} onChange={setPlayerName} disabled={rolling} />
           {nameError && <div className="text-[#FF2E2E] text-sm -mt-3">{nameError}</div>}
-
           <ArtifactCard roll={roll} />
-
           <RollButton onRoll={onRoll} rolling={rolling} />
-
           <StatsBreakdown roll={roll} />
         </div>
 
