@@ -89,6 +89,7 @@ export async function createOrJoinDeterministicMatch(a, b, aName, bName) {
         [firstId]: { userId: firstId, playerName: firstId === a ? aName : bName },
         [secondId]: { userId: secondId, playerName: secondId === a ? aName : bName },
       },
+      states: {},
       startAt: 0,
       finish: null,
     };
@@ -121,7 +122,7 @@ export async function startMatchIfReady(matchId) {
     const playerIds = Object.keys(current.players || {});
     const bothReady = playerIds.length === 2 && playerIds.every((id) => states[id]?.ready);
     if (!bothReady) return;
-    return { ...current, status: 'countdown', startAt: now + 3500 };
+    return { ...current, status: 'racing', startAt: now + 3500 };
   });
   return tx.snapshot.val();
 }
