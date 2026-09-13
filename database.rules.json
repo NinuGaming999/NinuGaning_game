@@ -15,6 +15,30 @@
         ".write": "newData.exists() && !data.exists()",
         ".validate": "newData.hasChildren(['id','userId','playerName','timestamp','meltDamage','rarity']) && newData.child('id').isString() && newData.child('id').val() == $rollId && newData.child('userId').isString() && newData.child('userId').val().length >= 1 && newData.child('playerName').isString() && newData.child('playerName').val().length >= 1 && newData.child('playerName').val().length <= 32 && newData.child('timestamp').isNumber() && newData.child('timestamp').val() >= 0 && newData.child('meltDamage').isNumber() && newData.child('meltDamage').val() >= 0 && newData.child('meltDamage').val() <= 1000000 && newData.child('rarity').isString()"
       }
+    },
+    "racingLeaderboard": {
+      ".indexOn": ["score"],
+      "$userId": {
+        ".write": "newData.exists() && newData.child('id').isString() && newData.child('id').val() == $userId && (!data.exists() || (newData.child('score').isNumber() && data.child('score').isNumber() && newData.child('score').val() > data.child('score').val()))",
+        ".validate": "newData.hasChildren(['id','userId','playerName','score','distance','nearMisses','overtakes','collisions','timestamp']) && newData.child('id').isString() && newData.child('id').val() == $userId && newData.child('userId').isString() && newData.child('userId').val() == $userId && newData.child('playerName').isString() && newData.child('playerName').val().length >= 1 && newData.child('playerName').val().length <= 32 && newData.child('score').isNumber() && newData.child('score').val() >= 0 && newData.child('score').val() <= 100000000 && newData.child('distance').isNumber() && newData.child('distance').val() >= 0 && newData.child('distance').val() <= 10000000 && newData.child('nearMisses').isNumber() && newData.child('nearMisses').val() >= 0 && newData.child('overtakes').isNumber() && newData.child('overtakes').val() >= 0 && newData.child('collisions').isNumber() && newData.child('collisions').val() >= 0 && newData.child('timestamp').isNumber()"
+      }
+    },
+    "racingQueue": {
+      ".indexOn": ["createdAt"],
+      "$userId": {
+        ".write": "newData.exists() ? (newData.child('userId').isString() && newData.child('userId').val() == $userId && newData.child('playerName').isString() && newData.child('playerName').val().length >= 1 && newData.child('playerName').val().length <= 32) : true"
+      }
+    },
+    "racingMatches": {
+      "$matchId": {
+        ".read": true,
+        ".write": true,
+        "states": {
+          "$userId": {
+            ".validate": "newData.hasChildren(['userId','ready','distance','lane','speed','finished']) && newData.child('userId').val() == $userId && newData.child('distance').isNumber() && newData.child('distance').val() >= 0 && newData.child('distance').val() <= 10000000 && newData.child('lane').isNumber() && newData.child('lane').val() >= -2 && newData.child('lane').val() <= 2 && newData.child('speed').isNumber() && newData.child('speed').val() >= 0 && newData.child('speed').val() <= 2000"
+          }
+        }
+      }
     }
   }
 }
