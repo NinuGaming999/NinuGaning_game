@@ -12,9 +12,19 @@ import {
   subscribeToRacingLeaderboard,
 } from '../utils/racingService';
 
-const MOVE_SPEED = 360;
-const REVERSE_SPEED = 250;
+const PLAYER_SPEED = 340;
+const TURN_RATE = 9; // radians/sec, how fast the car visually turns to face travel direction
 const MAX_HP = 100;
+const FIELD_W = 2600;
+const FIELD_H = 2600;
+const PLAYER_RADIUS = 22;
+const NPC_RADIUS = 24;
+const NPC_COUNT = 12;
+const NEAR_RADIUS_MULT = 2.3;
+const HIT_COOLDOWN_MS = 700;
+const NEAR_COOLDOWN_MS = 500;
+const REMOTE_HIT_COOLDOWN_MS = 700;
+
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 
 function hash(seed, n) {
@@ -23,28 +33,67 @@ function hash(seed, n) {
   return ((x ^ (x >>> 16)) >>> 0) / 4294967296;
 }
 
-function traffic(seed, index) {
-  const lane = [-1, 0, 1][Math.floor(hash(seed, index * 11 + 3) * 3)];
-  const change = hash(seed, index * 13 + 7) > 0.7;
-  const dir = hash(seed, index * 17 + 9) > 0.5 ? 1 : -1;
+// Turns `current` toward `target` (both radians) by at most `maxDelta`,
+// always taking the shorter way around the circle.
+function turnToward(current, target, maxDelta) {
+  let diff = (target - current) % (Math.PI * 2);
+  if (diff > Math.PI) diff -= Math.PI * 2;
+  if (diff < -Math.PI) diff += Math.PI * 2;
+  return current + clamp(diff, -maxDelta, maxDelta);
+}
+
+// A persistent pool of traffic cars scattered across the whole field. They
+// never get spawned/despawned as the player moves - they exist for the
+// entire race and just roam, so they can't "disappear and not come back".
+function makeNpc(seed, index) {
   return {
     id: String(index),
-    distance: index * 260 + 120 + hash(seed, index * 19 + 2) * 120,
-    lane,
-    target: change ? clamp(lane + dir, -1, 1) : lane,
-    change,
-    baseSpeed: 150 + hash(seed, index * 23 + 4) * 170,
-    kind: hash(seed, index * 29 + 5) > 0.82 ? 'truck' : 'car',
+    x: NPC_RADIUS * 2 + hash(seed, index * 11 + 2) * (FIELD_W - NPC_RADIUS * 4),
+    y: NPC_RADIUS * 2 + hash(seed, index * 13 + 3) * (FIELD_H - NPC_RADIUS * 4),
+    angle: hash(seed, index * 7 + 1) * Math.PI * 2,
+    speed: 70 + hash(seed, index * 17 + 4) * 110,
+    kind: hash(seed, index * 29 + 5) > 0.8 ? 'truck' : 'car',
+    turnAt: 1.5 + hash(seed, index * 23 + 6) * 3,
+    wasNear: false,
   };
+}
+
+// Simple wandering logic: drive in the current direction, occasionally pick
+// a new one, and bounce off the field boundary instead of vanishing.
+function stepNpc(npc, dt) {
+  npc.turnAt -= dt;
+  if (npc.turnAt <= 0) {
+    npc.angle += (Math.random() - 0.5) * 2.4;
+    npc.turnAt = 1.5 + Math.random() * 3;
+  }
+
+  npc.x += Math.cos(npc.angle) * npc.speed * dt;
+  npc.y += Math.sin(npc.angle) * npc.speed * dt;
+
+  if (npc.x < NPC_RADIUS) {
+    npc.x = NPC_RADIUS;
+    npc.angle = Math.PI - npc.angle;
+  } else if (npc.x > FIELD_W - NPC_RADIUS) {
+    npc.x = FIELD_W - NPC_RADIUS;
+    npc.angle = Math.PI - npc.angle;
+  }
+
+  if (npc.y < NPC_RADIUS) {
+    npc.y = NPC_RADIUS;
+    npc.angle = -npc.angle;
+  } else if (npc.y > FIELD_H - NPC_RADIUS) {
+    npc.y = FIELD_H - NPC_RADIUS;
+    npc.angle = -npc.angle;
+  }
 }
 
 function score(s) {
   return Math.max(
     0,
     Math.round(
-      Math.abs(s.distance) * 8 +
+      s.traveled * 8 +
         s.near * 250 +
-        s.over * 120 +
+        s.over * 160 +
         s.comboBest * 180 -
         s.hits * 400
     )
@@ -107,24 +156,29 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
 
   useEffect(() => subscribeToRacingLeaderboard(setRows, () => {}), []);
 
-  const init = useCallback((m, seed) => {
+  const init = useCallback((m, seed, spawn) => {
+    const npcs = [];
+    for (let i = 0; i < NPC_COUNT; i += 1) npcs.push(makeNpc(seed, i));
+
     state.current = {
       running: true,
       seed,
-      distance: 0,
-      time: 0,
-      x: 0,
+      x: spawn?.x ?? FIELD_W / 2,
+      y: spawn?.y ?? FIELD_H / 2,
+      angle: -Math.PI / 2,
+      traveled: 0,
       hp: 100,
       near: 0,
       over: 0,
       hits: 0,
       combo: 0,
       comboBest: 0,
-      seen: new Set(),
+      npcs,
       remote: null,
       lastPublish: 0,
       lastHit: 0,
       lastNear: 0,
+      lastRemoteHit: 0,
     };
 
     keys.current.clear();
@@ -145,7 +199,7 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
       const saved = await saveRacingScore({
         playerName: name.trim(),
         score: sc,
-        distance: Math.abs(s.distance),
+        distance: Math.round(s.traveled),
         nearMisses: s.near,
         overtakes: s.over,
         collisions: s.hits,
@@ -157,7 +211,7 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
 
       setResult({
         score: sc,
-        distance: Math.round(Math.abs(s.distance)),
+        distance: Math.round(s.traveled),
         reason,
         saved,
       });
@@ -224,12 +278,20 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
       (data) => {
         setMatch(data);
         if (data?.status === 'racing' && !state.current?.running) {
-          init('multi', Number(data.seed) || 1);
+          // Give each racer their own starting corner of the field so they
+          // don't spawn on top of each other. Sorting the player ids keeps
+          // this deterministic and consistent on both clients.
+          const ids = Object.keys(data.players || {}).sort();
+          const spawn =
+            ids[0] === uid
+              ? { x: FIELD_W * 0.3, y: FIELD_H * 0.5 }
+              : { x: FIELD_W * 0.7, y: FIELD_H * 0.5 };
+          init('multi', Number(data.seed) || 1, spawn);
         }
       },
       () => setStatus('Connection lost.')
     );
-  }, [matchId, init]);
+  }, [matchId, init, uid]);
 
   useEffect(() => {
     if (!matchId || !state.current?.running) return;
@@ -239,6 +301,7 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
       lane: 0,
       speed: 0,
       finished: false,
+      traveled: 0,
     }).catch(() => {});
   }, [matchId, uid]);
 
@@ -299,7 +362,6 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
 
       const dt = Math.min(0.05, (now - last.current) / 1000 || 0.016);
       last.current = now;
-      s.time += dt;
 
       const w = c.clientWidth;
       const h = c.clientHeight;
@@ -310,130 +372,128 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
       const leftKey = keys.current.has('a');
       const rightKey = keys.current.has('d');
 
-      // W/S = direct forward/back movement, A/D = direct left/right movement.
-      // Holding combinations gives diagonal movement with no auto-centering.
+      // Free movement: WASD / the joystick set a direction vector and the
+      // car drives that way across the open field - any direction, not just
+      // forward/back on a single line.
       let moveX = mobile ? joy.current.x : (rightKey ? 1 : 0) - (leftKey ? 1 : 0);
       let moveY = mobile ? -joy.current.y : (forward ? 1 : 0) - (back ? 1 : 0);
 
-      const len = Math.hypot(moveX, moveY);
-      if (len > 1) {
-        moveX /= len;
-        moveY /= len;
+      const inputLen = Math.hypot(moveX, moveY);
+      if (inputLen > 1) {
+        moveX /= inputLen;
+        moveY /= inputLen;
       }
 
-      // Y movement changes the player's actual road position/distance.
-      s.distance += moveY * (moveY >= 0 ? MOVE_SPEED : REVERSE_SPEED) * dt;
-      s.x = clamp(s.x + moveX * 2.25 * dt, -1.12, 1.12);
+      if (inputLen > 0.02) {
+        const targetAngle = Math.atan2(moveY, moveX);
+        s.angle = turnToward(s.angle, targetAngle, TURN_RATE * dt);
+        s.x = clamp(s.x + moveX * PLAYER_SPEED * dt, PLAYER_RADIUS, FIELD_W - PLAYER_RADIUS);
+        s.y = clamp(s.y + moveY * PLAYER_SPEED * dt, PLAYER_RADIUS, FIELD_H - PLAYER_RADIUS);
+        s.traveled += inputLen * PLAYER_SPEED * dt;
+      }
 
-      const roadW = Math.min(w * 0.72, 720);
-      const laneW = roadW / 3;
-      const roadLeft = (w - roadW) / 2;
-      const horizon = h * 0.12;
-      const playerX = w / 2 + s.x * laneW;
-      const playerY = h * 0.78;
+      // Camera follows the player, so the field scrolls beneath the car
+      // however it drives instead of the car being locked to one axis.
+      const camX = s.x;
+      const camY = s.y;
+      const toScreenX = (wx) => w / 2 + (wx - camX);
+      const toScreenY = (wy) => h / 2 + (wy - camY);
 
-      ctx.fillStyle = '#83a75f';
+      ctx.fillStyle = '#3c5c33';
       ctx.fillRect(0, 0, w, h);
 
-      ctx.fillStyle = '#2e2e2e';
-      ctx.fillRect(roadLeft, horizon, roadW, h - horizon);
+      const fieldLeft = toScreenX(0);
+      const fieldTop = toScreenY(0);
+      ctx.fillStyle = '#6b8f4e';
+      ctx.fillRect(fieldLeft, fieldTop, FIELD_W, FIELD_H);
 
-      ctx.fillStyle = '#f1f1f1';
-      ctx.fillRect(roadLeft + 4, horizon, 5, h - horizon);
-      ctx.fillRect(roadLeft + roadW - 9, horizon, 5, h - horizon);
-
-      const dash = (Math.abs(s.distance) * 1.1) % 72;
-      ctx.fillStyle = '#ddd';
-      for (let lane = 1; lane < 3; lane += 1) {
-        for (let y = horizon + 20 - dash; y < h; y += 72) {
-          ctx.fillRect(roadLeft + lane * laneW - 2, y, 4, 30);
-        }
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.lineWidth = 2;
+      const grid = 160;
+      for (let gx = 0; gx <= FIELD_W; gx += grid) {
+        ctx.beginPath();
+        ctx.moveTo(toScreenX(gx), toScreenY(0));
+        ctx.lineTo(toScreenX(gx), toScreenY(FIELD_H));
+        ctx.stroke();
+      }
+      for (let gy = 0; gy <= FIELD_H; gy += grid) {
+        ctx.beginPath();
+        ctx.moveTo(toScreenX(0), toScreenY(gy));
+        ctx.lineTo(toScreenX(FIELD_W), toScreenY(gy));
+        ctx.stroke();
       }
 
-      // Generate traffic continuously around the player's current position.
-      // There is deliberately no finish distance: the road continues forever.
-      const baseIndex = Math.floor(Math.abs(s.distance) / 260);
-      for (let i = Math.max(0, baseIndex - 4); i <= baseIndex + 10; i += 1) {
-        const t = traffic(s.seed, i);
-        const trafficSpeed = t.baseSpeed;
-        const rel = t.distance + trafficSpeed * s.time * 0.45 - Math.abs(s.distance);
+      ctx.strokeStyle = '#caa15a';
+      ctx.lineWidth = 10;
+      ctx.strokeRect(fieldLeft, fieldTop, FIELD_W, FIELD_H);
 
-        if (rel < -180 || rel > 1400) continue;
+      // Traffic: a fixed pool of cars that roams the whole field for the
+      // entire race (see stepNpc) and collides using real 2D distance, so
+      // hits register reliably instead of only along a single lane band.
+      s.npcs.forEach((npc) => {
+        stepNpc(npc, dt);
 
-        const p = clamp(1 - rel / 1400, 0.08, 1);
-        const y = horizon + (h - horizon) * (p * 0.92);
+        const dist = Math.hypot(npc.x - s.x, npc.y - s.y);
+        const hitRadius = PLAYER_RADIUS + NPC_RADIUS;
+        const nearRadius = hitRadius * NEAR_RADIUS_MULT;
 
-        const progress = t.change
-          ? clamp((Math.abs(s.distance) - t.distance + 160) / 150, 0, 1)
-          : 0;
-        const ease = progress * progress * (3 - 2 * progress);
-        const lane = t.lane + (t.target - t.lane) * ease;
-        const x = w / 2 + lane * laneW;
-
-        car(
-          ctx,
-          x,
-          y,
-          (0.25 + p * 0.8) * (mobile ? 0.9 : 1),
-          t.kind === 'truck' ? '#777' : '#d84a4a',
-          (t.target - t.lane) * ease * 0.15
-        );
-
-        if (t.change && rel < 450 && rel > 0) {
-          ctx.fillStyle = '#ffd84d';
-          ctx.font = 'bold 11px system-ui';
-          ctx.textAlign = 'center';
-          ctx.fillText(t.target > t.lane ? '→ SWITCH' : '← SWITCH', x, y - 32 * p);
-        }
-
-        const hit = rel < 105 && rel > -20 && Math.abs(lane - s.x) < 0.25;
-        if (hit && now - s.lastHit > 700) {
+        if (dist < hitRadius && now - s.lastHit > HIT_COOLDOWN_MS) {
           s.lastHit = now;
           s.hits += 1;
-          s.hp -= t.kind === 'truck' ? 30 : 20;
+          s.hp -= npc.kind === 'truck' ? 30 : 20;
           s.combo = 0;
-        } else if (
-          rel < 100 &&
-          rel > -5 &&
-          Math.abs(lane - s.x) < 0.52 &&
-          now - s.lastNear > 600
-        ) {
+          const nx = (s.x - npc.x) / (dist || 1);
+          const ny = (s.y - npc.y) / (dist || 1);
+          s.x = clamp(s.x + nx * 26, PLAYER_RADIUS, FIELD_W - PLAYER_RADIUS);
+          s.y = clamp(s.y + ny * 26, PLAYER_RADIUS, FIELD_H - PLAYER_RADIUS);
+        } else if (dist < nearRadius && now - s.lastNear > NEAR_COOLDOWN_MS) {
           s.lastNear = now;
           s.near += 1;
           s.combo += 1;
           s.comboBest = Math.max(s.comboBest, s.combo);
         }
 
-        if (rel < -20 && !s.seen.has(t.id)) {
-          s.seen.add(t.id);
+        if (npc.wasNear && dist >= nearRadius) {
           s.over += 1;
           s.combo += 1;
           s.comboBest = Math.max(s.comboBest, s.combo);
         }
-      }
+        npc.wasNear = dist < nearRadius;
 
+        const sx = toScreenX(npc.x);
+        const sy = toScreenY(npc.y);
+        if (sx > -60 && sx < w + 60 && sy > -60 && sy < h + 60) {
+          car(ctx, sx, sy, mobile ? 0.95 : 1, npc.kind === 'truck' ? '#777' : '#d84a4a', npc.angle + Math.PI / 2);
+        }
+      });
+
+      // Opponent car in multiplayer, drawn on the same shared field (it was
+      // never rendered before, which made multiplayer feel broken).
+      let remoteTraveled = 0;
       if (mode === 'multi' && s.remote) {
-        const gap = (Number(s.remote.distance) || 0) - s.distance;
-        const remoteLane = Number(s.remote.lane) || 0;
-        if (gap > -90 && gap < 160 && Math.abs(remoteLane - s.x) < 0.25) {
+        const remoteX = clamp(((Number(s.remote.lane) || 0) + 2) / 4, 0, 1) * FIELD_W;
+        const remoteY = clamp(Number(s.remote.distance) || 0, 0, FIELD_H);
+        remoteTraveled = Number(s.remote.traveled) || 0;
+
+        const dist = Math.hypot(remoteX - s.x, remoteY - s.y);
+        const hitRadius = PLAYER_RADIUS * 2;
+        if (dist < hitRadius && now - s.lastRemoteHit > REMOTE_HIT_COOLDOWN_MS) {
+          s.lastRemoteHit = now;
           s.hits += 1;
           s.hp -= 8;
           s.combo = 0;
         }
+
+        car(ctx, toScreenX(remoteX), toScreenY(remoteY), 1.1, '#2e6bff', 0);
       }
 
-      car(ctx, playerX, playerY, 1.15, '#ff2e2e', s.x * -0.08);
+      car(ctx, w / 2, h / 2, 1.15, '#ff2e2e', s.angle + Math.PI / 2);
 
       s.hp = clamp(s.hp, 0, MAX_HP);
-      const place =
-        mode === 'multi' &&
-        s.remote &&
-        (Number(s.remote.distance) || 0) > s.distance
-          ? 2
-          : 1;
+      const place = mode === 'multi' && s.remote && remoteTraveled > s.traveled ? 2 : 1;
 
       setHud({
-        distance: Math.round(Math.abs(s.distance)),
+        distance: Math.round(s.traveled),
         score: score(s),
         hp: Math.round(s.hp),
         near: s.near,
@@ -446,10 +506,11 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
         s.lastPublish = now;
         publishPlayerState(matchId, uid, {
           ready: true,
-          distance: Math.round(s.distance),
-          lane: s.x,
-          speed: moveY * (moveY >= 0 ? MOVE_SPEED : REVERSE_SPEED),
+          distance: clamp(s.y, 0, FIELD_H),
+          lane: clamp((s.x / FIELD_W) * 4 - 2, -2, 2),
+          speed: clamp(Math.round(inputLen > 0.02 ? PLAYER_SPEED : 0), 0, 2000),
           finished: false,
+          traveled: s.traveled,
         }).catch(() => {});
       }
 
@@ -546,7 +607,7 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
       <header className="border-b-2 border-[#FF2E2E] px-5 py-4 flex justify-between">
         <button onClick={onBack} className="text-[#aaa] font-bold">NINU GAMING</button>
         <b className="text-[#43D17A] tracking-[.2em]">INFINITE RUSH</b>
-        <span className="text-xs text-[#777]">INFINITE ROAD</span>
+        <span className="text-xs text-[#777]">OPEN FIELD</span>
       </header>
 
       <main className="max-w-6xl mx-auto p-5 md:p-8">
@@ -555,8 +616,8 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
             <div className="text-xs font-black tracking-[.3em] text-[#43D17A]">RACING</div>
             <h1 className="text-5xl font-black mt-2">INFINITE RUSH</h1>
             <p className="text-[#999] mt-3">
-              Infinite straight highway. W/S move forward and backward. A/D move left and right.
-              Combine them for diagonal movement.
+              Drive freely around an open field. WASD moves the car in any direction you point
+              it - combine keys for diagonals. Dodge or ram the traffic roaming the field.
             </p>
 
             <input
@@ -665,11 +726,11 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
             </div>
           ) : (
             <div className="absolute bottom-4 right-4 bg-black/65 rounded-lg p-3 text-xs">
-              W = FORWARD<br />
-              S = BACKWARD<br />
+              W = UP<br />
+              S = DOWN<br />
               A = LEFT<br />
               D = RIGHT<br />
-              W+A / W+D = DIAGONAL
+              COMBINE KEYS = DIAGONAL
             </div>
           )}
         </div>
