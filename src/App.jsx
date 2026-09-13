@@ -1,6 +1,8 @@
 import { useCallback, useState } from 'react';
 import Desktop from './components/Desktop';
 import Mobile from './components/Mobile';
+import GameHub from './components/GameHub';
+import RacingGame from './racing/RacingGame';
 import { useResponsive } from './hooks/useResponsive';
 import { useLeaderboard } from './hooks/useLeaderboard';
 import { useObserverFeed } from './hooks/useObserverFeed';
@@ -10,16 +12,13 @@ import { getRarity } from './utils/rarityBadge';
 import { formatStatValue } from './utils/format';
 import { SLOT_ORDER } from './utils/artifactData';
 
-const ROLL_BUTTON_LOCK_MS = 2000; // "disable roll button for 2 seconds"
-const REVEAL_DELAY_MS = 300; // small delay so the card reveal animation reads clearly
+const ROLL_BUTTON_LOCK_MS = 2000;
+const REVEAL_DELAY_MS = 300;
 
 function sanitizeName(raw) {
-  // Allow any text except newlines/quotes, so it stores cleanly as JSON.
-  return raw.replace(/\n/g, '').replace(/["']/g, '').trim();
+  return raw.replace(/[\n\r"']/g, '').trim().slice(0, 32);
 }
 
-// Builds a compact, human-readable summary of each rolled piece for the
-// leaderboard payload (main stat + substats, all pre-formatted).
 function summarizePieces(pieces) {
   const summary = {};
   SLOT_ORDER.forEach((slotKey) => {
@@ -36,10 +35,7 @@ function summarizePieces(pieces) {
   return summary;
 }
 
-export default function App() {
-  const isMobile = useResponsive();
-
-  const [playerName, setPlayerName] = useState('');
+function ArtifactGame({ isMobile, playerName, setPlayerName, onBack }) {
   const [nameError, setNameError] = useState('');
   const [roll, setRoll] = useState(null);
   const [rolling, setRolling] = useState(false);
@@ -108,7 +104,43 @@ export default function App() {
     loading,
     error,
     liveRolls: visibleLiveRolls,
+    onBack,
   };
 
   return isMobile ? <Mobile {...sharedProps} /> : <Desktop {...sharedProps} />;
+}
+
+export default function App() {
+  const isMobile = useResponsive();
+  const [screen, setScreen] = useState('hub');
+  const [playerName, setPlayerName] = useState('');
+
+  if (screen === 'artifact') {
+    return (
+      <ArtifactGame
+        isMobile={isMobile}
+        playerName={playerName}
+        setPlayerName={setPlayerName}
+        onBack={() => setScreen('hub')}
+      />
+    );
+  }
+
+  if (screen === 'racing') {
+    return (
+      <RacingGame
+        initialPlayerName={playerName}
+        onBack={() => setScreen('hub')}
+      />
+    );
+  }
+
+  return (
+    <GameHub
+      playerName={playerName}
+      setPlayerName={setPlayerName}
+      onOpenArtifact={() => setScreen('artifact')}
+      onOpenRacing={() => setScreen('racing')}
+    />
+  );
 }
