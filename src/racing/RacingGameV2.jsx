@@ -1,4 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import * as THREE from 'three';
+import { MountainTrack } from './engine/Track';
+import { WorldBuilder } from './engine/World';
+import { createCar, CarPhysics, TOTAL_LAPS } from './engine/Car';
+import { AIController } from './engine/AI';
+import { InputManager } from './engine/Input';
+import { ChaseCamera } from './engine/Camera';
 import {
   createOrJoinDeterministicMatch,
   finishMatch,
@@ -12,727 +19,405 @@ import {
   subscribeToRacingLeaderboard,
 } from '../utils/racingService';
 
-const PLAYER_SPEED = 340;
-const TURN_RATE = 9; // radians/sec, how fast the car visually turns to face travel direction
-const MAX_HP = 100;
-const FIELD_W = 2600;
-const FIELD_H = 2600;
-const PLAYER_RADIUS = 22;
-const NPC_RADIUS = 24;
-const NPC_COUNT = 12;
-const NEAR_RADIUS_MULT = 2.3;
-const HIT_COOLDOWN_MS = 700;
-const NEAR_COOLDOWN_MS = 500;
-const REMOTE_HIT_COOLDOWN_MS = 700;
+// This replaces the old open-field traffic-dodging RacingGameV2 with a full
+// 3D mountain circuit (lap racing against AI, plus 1v1 realtime multiplayer).
+// It's a different genre from the old game, so "collisions"/"nearMisses"
+// below are honest proxies rather than literal car-to-car hits:
+//   score      -> placement + pace based, or raw distance if you don't finish
+//   distance   -> actual meters driven around the 7km circuit
+//   nearMisses -> close passes with an AI car (single) or the opponent (multi)
+//   overtakes  -> number of times your race position improved
+//   collisions -> number of distinct off-road excursions
+// The racingLeaderboard/racingQueue/racingMatches Firebase schema and the
+// saveRacingScore() call signature are unchanged, so the existing ranking
+// system and its Firebase rules keep working as-is.
 
-const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
+const AI_COLORS = ['#ff3d88', '#ffa63d', '#b07cff', '#68ff88', '#ff5d52'];
+const NEAR_MISS_DIST = 9;
+const NEAR_MISS_COOLDOWN_MS = 600;
+const OFFTRACK_COOLDOWN_MS = 800;
 
-function hash(seed, n) {
-  let x = (seed ^ Math.imul(n + 1, 0x45d9f3b)) >>> 0;
-  x = Math.imul(x ^ (x >>> 16), 0x45d9f3b) >>> 0;
-  return ((x ^ (x >>> 16)) >>> 0) / 4294967296;
-}
-
-// Turns `current` toward `target` (both radians) by at most `maxDelta`,
-// always taking the shorter way around the circle.
-function turnToward(current, target, maxDelta) {
-  let diff = (target - current) % (Math.PI * 2);
-  if (diff > Math.PI) diff -= Math.PI * 2;
-  if (diff < -Math.PI) diff += Math.PI * 2;
-  return current + clamp(diff, -maxDelta, maxDelta);
-}
-
-// A persistent pool of traffic cars scattered across the whole field. They
-// never get spawned/despawned as the player moves - they exist for the
-// entire race and just roam, so they can't "disappear and not come back".
-function makeNpc(seed, index) {
-  return {
-    id: String(index),
-    x: NPC_RADIUS * 2 + hash(seed, index * 11 + 2) * (FIELD_W - NPC_RADIUS * 4),
-    y: NPC_RADIUS * 2 + hash(seed, index * 13 + 3) * (FIELD_H - NPC_RADIUS * 4),
-    angle: hash(seed, index * 7 + 1) * Math.PI * 2,
-    speed: 70 + hash(seed, index * 17 + 4) * 110,
-    kind: hash(seed, index * 29 + 5) > 0.8 ? 'truck' : 'car',
-    turnAt: 1.5 + hash(seed, index * 23 + 6) * 3,
-    wasNear: false,
-  };
-}
-
-// Simple wandering logic: drive in the current direction, occasionally pick
-// a new one, and bounce off the field boundary instead of vanishing.
-function stepNpc(npc, dt) {
-  npc.turnAt -= dt;
-  if (npc.turnAt <= 0) {
-    npc.angle += (Math.random() - 0.5) * 2.4;
-    npc.turnAt = 1.5 + Math.random() * 3;
-  }
-
-  npc.x += Math.cos(npc.angle) * npc.speed * dt;
-  npc.y += Math.sin(npc.angle) * npc.speed * dt;
-
-  if (npc.x < NPC_RADIUS) {
-    npc.x = NPC_RADIUS;
-    npc.angle = Math.PI - npc.angle;
-  } else if (npc.x > FIELD_W - NPC_RADIUS) {
-    npc.x = FIELD_W - NPC_RADIUS;
-    npc.angle = Math.PI - npc.angle;
-  }
-
-  if (npc.y < NPC_RADIUS) {
-    npc.y = NPC_RADIUS;
-    npc.angle = -npc.angle;
-  } else if (npc.y > FIELD_H - NPC_RADIUS) {
-    npc.y = FIELD_H - NPC_RADIUS;
-    npc.angle = -npc.angle;
-  }
-}
-
-function score(s) {
-  return Math.max(
-    0,
-    Math.round(
-      s.traveled * 8 +
-        s.near * 250 +
-        s.over * 160 +
-        s.comboBest * 180 -
-        s.hits * 400
-    )
-  );
-}
-
-function car(ctx, x, y, scale, color, angle = 0) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(angle);
-  const w = 36 * scale;
-  const h = 66 * scale;
-
-  ctx.fillStyle = '#111';
-  ctx.fillRect(-w * 0.62, -h * 0.32, 6 * scale, 18 * scale);
-  ctx.fillRect(w * 0.46, -h * 0.32, 6 * scale, 18 * scale);
-  ctx.fillRect(-w * 0.62, h * 0.14, 6 * scale, 18 * scale);
-  ctx.fillRect(w * 0.46, h * 0.14, 6 * scale, 18 * scale);
-
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.roundRect(-w / 2, -h / 2, w, h, 6 * scale);
-  ctx.fill();
-
-  ctx.fillStyle = '#9bd3ff';
-  ctx.beginPath();
-  ctx.roundRect(-w * 0.32, -h * 0.27, w * 0.64, h * 0.24, 4 * scale);
-  ctx.fill();
-
-  ctx.restore();
+function isTouchDevice() {
+  return (typeof window !== 'undefined' && window.matchMedia?.('(pointer:coarse)').matches) || 'ontouchstart' in window;
 }
 
 export default function RacingGameV2({ initialPlayerName, onBack }) {
-  const canvas = useRef(null);
-  const raf = useRef(0);
-  const last = useRef(0);
-  const keys = useRef(new Set());
-  const state = useRef(null);
-  const joy = useRef({ active: false, x: 0, y: 0, px: 0, py: 0 });
+  const mountRef = useRef(null);
+  const canvasRef = useRef(null);
+  const speedRef = useRef(null);
+  const lapRef = useRef(null);
+  const posRef = useRef(null);
+  const timeRef = useRef(null);
+
+  const engine = useRef(null); // holds all the three.js/game-loop state for this mount
+  const raceState = useRef(null); // { near, over, hits, lastPlace, lastNear, lastOffTrack, raceClock }
 
   const [name, setName] = useState(initialPlayerName || '');
-  const [phase, setPhase] = useState('menu');
+  const [phase, setPhase] = useState('menu'); // menu | queue | race | result
   const [mode, setMode] = useState('single');
-  const [hud, setHud] = useState({
-    distance: 0,
-    score: 0,
-    hp: 100,
-    near: 0,
-    over: 0,
-    combo: 0,
-    place: 1,
-  });
-  const [rows, setRows] = useState([]);
   const [status, setStatus] = useState('');
-  const [matchId, setMatchId] = useState(null);
-  const [match, setMatch] = useState(null);
   const [result, setResult] = useState(null);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [rows, setRows] = useState([]);
+  const [matchId, setMatchId] = useState(null);
+  const [touch] = useState(isTouchDevice);
 
   const uid = useMemo(() => getUserIdFromName(name), [name]);
 
   useEffect(() => subscribeToRacingLeaderboard(setRows, () => {}), []);
 
-  const init = useCallback((m, seed, spawn) => {
-    const npcs = [];
-    for (let i = 0; i < NPC_COUNT; i += 1) npcs.push(makeNpc(seed, i));
+  // ---- three.js engine lifecycle: boot once when we enter the race phase, tear down fully on exit ----
+  useEffect(() => {
+    if (phase !== 'race' || !canvasRef.current) return undefined;
+    let cancelled = false;
+    let raf = 0;
 
-    state.current = {
-      running: true,
-      seed,
-      x: spawn?.x ?? FIELD_W / 2,
-      y: spawn?.y ?? FIELD_H / 2,
-      angle: -Math.PI / 2,
-      traveled: 0,
-      hp: 100,
-      near: 0,
-      over: 0,
-      hits: 0,
-      combo: 0,
-      comboBest: 0,
-      npcs,
-      remote: null,
-      lastPublish: 0,
-      lastHit: 0,
-      lastNear: 0,
-      lastRemoteHit: 0,
+    const renderer = new THREE.WebGLRenderer({ canvas: canvasRef.current, antialias: !touch, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, touch ? 1 : 1.5));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.shadowMap.enabled = !touch;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x050910);
+    scene.fog = new THREE.FogExp2(0x050910, 0.00145);
+    const camera = new THREE.PerspectiveCamera(64, 1, 0.1, touch ? 1500 : 1600);
+
+    const quality = touch
+      ? { shadows: false, shadowMapSize: 1024, decorScale: 0.55 }
+      : { shadows: true, shadowMapSize: 2048, decorScale: 1 };
+
+    const track = new MountainTrack(scene, quality);
+    const world = new WorldBuilder(scene, track, quality);
+    world.addBase();
+
+    const input = new InputManager(renderer.domElement);
+    const chase = new ChaseCamera(camera, track, input);
+    input.cameraProxy = chase;
+
+    const playerMesh = createCar('#19d3ff', name.trim() || 'Racer');
+    scene.add(playerMesh);
+    const player = new CarPhysics(playerMesh, track);
+    player.reset(0);
+
+    const ai = [];
+    if (mode === 'single') {
+      for (let i = 0; i < 5; i += 1) {
+        const mesh = createCar(AI_COLORS[i % AI_COLORS.length], `AI-${i + 1}`);
+        scene.add(mesh);
+        const controller = new AIController(mesh, track, i + 1);
+        controller.init();
+        ai.push(controller);
+      }
+    }
+
+    // Opponent car for multiplayer, filled in as state comes over Firebase.
+    let opponentMesh = null;
+    if (mode === 'multi') {
+      opponentMesh = createCar('#ff914d', 'Opponent');
+      opponentMesh.visible = false;
+      scene.add(opponentMesh);
+    }
+
+    raceState.current = { near: 0, over: 0, hits: 0, lastPlace: 1, lastNearAt: 0, lastOffTrackAt: 0, offTrack: false, raceClock: 0, finished: false };
+
+    function resize() {
+      const el = mountRef.current;
+      if (!el) return;
+      const w = el.clientWidth, h = el.clientHeight;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / Math.max(1, h);
+      camera.updateProjectionMatrix();
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    const clock = new THREE.Clock();
+    let lastPublish = 0;
+
+    function place() {
+      const others = mode === 'single'
+        ? ai.map((a) => a.distance)
+        : opponentMesh?.visible ? [opponentMesh.userData.distance || 0] : [];
+      return 1 + others.filter((d) => d >= player.distance + 0.0001).length;
+    }
+
+    function finish(reason) {
+      if (raceState.current.finished) return;
+      raceState.current.finished = true;
+      const rs = raceState.current;
+      const distanceMeters = Math.round(player.distance * track.length);
+      const p = place();
+      let score;
+      if (reason === 'finished') {
+        score = Math.max(0, Math.round(30000 - rs.raceClock * 8 - p * 400));
+      } else {
+        // Didn't finish (left the race) - score from ground covered instead.
+        score = distanceMeters;
+      }
+      saveRacingScore({
+        playerName: name.trim(),
+        score,
+        distance: distanceMeters,
+        nearMisses: rs.near,
+        overtakes: rs.over,
+        collisions: rs.hits,
+      }).then((saved) => {
+        if (cancelled) return;
+        if (mode === 'multi' && matchId) finishMatch(matchId, uid, score).catch(() => {});
+        setResult({ score, distance: distanceMeters, place: p, reason, saved: !!saved });
+        setPhase('result');
+      }).catch(() => {
+        if (cancelled) return;
+        setResult({ score, distance: distanceMeters, place: p, reason, saved: false });
+        setPhase('result');
+      });
+    }
+    engine.current = {
+      finish,
+      applyOpponent(s) {
+        if (!opponentMesh || !s) return;
+        opponentMesh.visible = true;
+        opponentMesh.position.set(s.x ?? opponentMesh.position.x, typeof s.y === 'number' ? s.y : 0.65, s.z ?? opponentMesh.position.z);
+        opponentMesh.rotation.y = s.yaw || 0;
+        opponentMesh.userData.distance = s.distance || 0;
+        opponentMesh.userData.finished = !!s.finished;
+      },
     };
 
-    keys.current.clear();
-    joy.current = { active: false, x: 0, y: 0, px: 0, py: 0 };
-    setMode(m);
-    setResult(null);
-    setPhase('race');
-    last.current = performance.now();
-  }, []);
+    function loop() {
+      raf = requestAnimationFrame(loop);
+      const dt = Math.min(clock.getDelta(), 0.04);
+      const rs = raceState.current;
 
-  const finishRun = useCallback(
-    async (reason) => {
-      const s = state.current;
-      if (!s || !s.running) return;
+      if (!rs.finished) {
+        rs.raceClock += dt;
+        const wasOffTrack = player.offTrack;
+        player.update(dt, input.state);
+        if (player.offTrack && !wasOffTrack) {
+          const now = performance.now();
+          if (now - rs.lastOffTrackAt > OFFTRACK_COOLDOWN_MS) { rs.hits += 1; rs.lastOffTrackAt = now; }
+        }
 
-      s.running = false;
-      const sc = score(s);
-      const saved = await saveRacingScore({
-        playerName: name.trim(),
-        score: sc,
-        distance: Math.round(s.traveled),
-        nearMisses: s.near,
-        overtakes: s.over,
-        collisions: s.hits,
-      }).catch(() => null);
+        if (mode === 'single') ai.forEach((a) => a.update(dt));
 
-      if (mode === 'multi' && matchId) {
-        await finishMatch(matchId, uid, sc).catch(() => {});
+        // Near-miss + overtake tracking against whichever opponents exist.
+        const opponents = mode === 'single' ? ai.map((a) => a.mesh) : (opponentMesh?.visible ? [opponentMesh] : []);
+        const now = performance.now();
+        for (const om of opponents) {
+          if (playerMesh.position.distanceTo(om.position) < NEAR_MISS_DIST && now - rs.lastNearAt > NEAR_MISS_COOLDOWN_MS) {
+            rs.near += 1; rs.lastNearAt = now;
+          }
+        }
+        const currentPlace = place();
+        if (currentPlace < rs.lastPlace) rs.over += currentPlace <= rs.lastPlace - 1 ? rs.lastPlace - currentPlace : 0;
+        rs.lastPlace = currentPlace;
+
+        if (player.finished) finish('finished');
+
+        if (speedRef.current) speedRef.current.textContent = String(Math.round(Math.max(0, player.speed) * 3.6));
+        if (lapRef.current) lapRef.current.textContent = `LAP ${Math.min(player.lap, TOTAL_LAPS)}/${TOTAL_LAPS}`;
+        if (posRef.current) posRef.current.textContent = `${currentPlace}${currentPlace === 1 ? 'ST' : currentPlace === 2 ? 'ND' : currentPlace === 3 ? 'RD' : 'TH'}`;
+        if (timeRef.current) timeRef.current.textContent = rs.raceClock.toFixed(1) + 's';
+
+        if (mode === 'multi' && matchId) {
+          const t = performance.now();
+          if (t - lastPublish > 150) {
+            lastPublish = t;
+            // The existing racingMatches security rules require this exact
+            // set of fields (ready/lane/speed/distance/finished/userId) with
+            // speed >= 0 - preserving that shape here (lane is unused by
+            // this game but required by the rule, so it's just sent as 0,
+            // and speed is clamped since this car can reverse). x/y/z/yaw
+            // are extra fields for actual 3D positioning, which the rule
+            // permits alongside the required ones.
+            publishPlayerState(matchId, uid, {
+              ready: true,
+              lane: 0,
+              distance: player.distance,
+              speed: Math.max(0, player.speed),
+              finished: player.finished,
+              x: playerMesh.position.x, y: playerMesh.position.y, z: playerMesh.position.z, yaw: player.yaw,
+            }).catch(() => {});
+          }
+        }
       }
 
-      setResult({
-        score: sc,
-        distance: Math.round(s.traveled),
-        reason,
-        saved,
+      chase.update(dt, player);
+      renderer.render(scene, camera);
+    }
+    loop();
+
+    const ro = new ResizeObserver(resize);
+    if (mountRef.current) ro.observe(mountRef.current);
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', resize);
+      ro.disconnect();
+      input.destroy();
+      renderer.dispose();
+      scene.traverse((obj) => {
+        obj.geometry?.dispose?.();
+        if (Array.isArray(obj.material)) obj.material.forEach((m) => m.dispose?.());
+        else obj.material?.dispose?.();
       });
-      setPhase('result');
-    },
-    [matchId, mode, name, uid]
-  );
+      engine.current = null;
+    };
+    // Intentionally only re-run when we (re)enter the race phase for a given mode/match,
+    // not on every name/matchId churn - the engine reads `name`/`matchId` via closures
+    // that are fixed for the lifetime of one race.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+
+  // ---- opponent state relay for multiplayer ----
+  useEffect(() => {
+    if (!matchId || mode !== 'multi') return undefined;
+    return subscribeToMatch(matchId, (data) => {
+      const opp = Object.entries(data?.states || {}).find(([id]) => id !== uid)?.[1];
+      engine.current?.applyOpponent(opp);
+    }, () => setStatus('Connection lost.'));
+  }, [matchId, mode, uid]);
 
   const single = useCallback(() => {
-    if (!name.trim()) return setStatus('Enter your name first.');
-    init('single', Math.floor(Math.random() * 0xffffffff));
-  }, [init, name]);
+    if (!name.trim()) { setStatus('Enter your name first.'); return; }
+    setMode('single');
+    setResult(null);
+    setPhase('race');
+  }, [name]);
 
   const queue = useCallback(async () => {
-    if (!name.trim()) return setStatus('Enter your name first.');
+    if (!name.trim()) { setStatus('Enter your name first.'); return; }
     setMode('multi');
     setPhase('queue');
     setStatus('Searching for a racer...');
-    try {
-      await queuePlayer(uid, name.trim());
-    } catch {
-      setStatus('Queue unavailable.');
-    }
+    try { await queuePlayer(uid, name.trim()); } catch { setStatus('Queue unavailable.'); }
   }, [name, uid]);
 
   useEffect(() => {
     if (phase !== 'queue') return undefined;
-
     let done = false;
     const off = subscribeToQueue(async (q) => {
       if (done) return;
-
-      const opponent = q
-        .filter((x) => x?.userId && x.userId !== uid)
-        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))[0];
-
+      const opponent = q.filter((x) => x?.userId && x.userId !== uid).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))[0];
       if (!opponent) return;
-
       done = true;
       try {
-        const id = await createOrJoinDeterministicMatch(
-          uid,
-          opponent.userId,
-          name.trim(),
-          opponent.playerName
-        );
+        const id = await createOrJoinDeterministicMatch(uid, opponent.userId, name.trim(), opponent.playerName);
         await leaveQueue(uid);
         setMatchId(id);
-        setStatus('Opponent found.');
+        setStatus('Opponent found - starting...');
+        setResult(null);
+        setPhase('race');
       } catch {
         done = false;
         setStatus('Matchmaking failed.');
       }
     }, () => {});
-
     return off;
   }, [phase, uid, name]);
 
-  useEffect(() => {
-    if (!matchId) return undefined;
+  const cancelQueue = useCallback(() => {
+    leaveQueue(uid).catch(() => {});
+    setPhase('menu');
+  }, [uid]);
 
-    return subscribeToMatch(
-      matchId,
-      (data) => {
-        setMatch(data);
-        if (data?.status === 'racing' && !state.current?.running) {
-          // Give each racer their own starting corner of the field so they
-          // don't spawn on top of each other. Sorting the player ids keeps
-          // this deterministic and consistent on both clients.
-          const ids = Object.keys(data.players || {}).sort();
-          const spawn =
-            ids[0] === uid
-              ? { x: FIELD_W * 0.3, y: FIELD_H * 0.5 }
-              : { x: FIELD_W * 0.7, y: FIELD_H * 0.5 };
-          init('multi', Number(data.seed) || 1, spawn);
-        }
-      },
-      () => setStatus('Connection lost.')
-    );
-  }, [matchId, init, uid]);
-
-  useEffect(() => {
-    if (!matchId || !state.current?.running) return;
-    publishPlayerState(matchId, uid, {
-      ready: true,
-      distance: 0,
-      lane: 0,
-      speed: 0,
-      finished: false,
-      traveled: 0,
-    }).catch(() => {});
+  const backToMenu = useCallback(() => {
+    if (matchId) leaveQueue(uid).catch(() => {});
+    setMatchId(null);
+    setPhase('menu');
   }, [matchId, uid]);
 
-  useEffect(() => {
-    if (!match?.states || !state.current) return;
-    const opponentId = Object.keys(match.states).find((x) => x !== uid);
-    if (opponentId) {
-      state.current.remote = { ...match.states[opponentId], userId: opponentId };
-    }
-  }, [match, uid]);
-
-  useEffect(() => {
-    const down = (event) => {
-      const key = event.key.toLowerCase();
-      if ('wasd'.includes(key)) {
-        event.preventDefault();
-        keys.current.add(key);
-      }
-    };
-
-    const up = (event) => {
-      const key = event.key.toLowerCase();
-      if ('wasd'.includes(key)) {
-        event.preventDefault();
-        keys.current.delete(key);
-      }
-    };
-
-    window.addEventListener('keydown', down);
-    window.addEventListener('keyup', up);
-    return () => {
-      window.removeEventListener('keydown', down);
-      window.removeEventListener('keyup', up);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (phase !== 'race') return undefined;
-
-    const c = canvas.current;
-    if (!c) return undefined;
-    const ctx = c.getContext('2d');
-
-    const resize = () => {
-      const r = c.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
-      c.width = r.width * dpr;
-      c.height = r.height * dpr;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    };
-
-    resize();
-    window.addEventListener('resize', resize);
-
-    const loop = (now) => {
-      const s = state.current;
-      if (!s?.running) return;
-
-      const dt = Math.min(0.05, (now - last.current) / 1000 || 0.016);
-      last.current = now;
-
-      const w = c.clientWidth;
-      const h = c.clientHeight;
-      const mobile = w < 850;
-
-      const forward = keys.current.has('w');
-      const back = keys.current.has('s');
-      const leftKey = keys.current.has('a');
-      const rightKey = keys.current.has('d');
-
-      // Free movement: WASD / the joystick set a direction vector and the
-      // car drives that way across the open field - any direction, not just
-      // forward/back on a single line.
-      let moveX = mobile ? joy.current.x : (rightKey ? 1 : 0) - (leftKey ? 1 : 0);
-      let moveY = mobile ? -joy.current.y : (forward ? 1 : 0) - (back ? 1 : 0);
-
-      const inputLen = Math.hypot(moveX, moveY);
-      if (inputLen > 1) {
-        moveX /= inputLen;
-        moveY /= inputLen;
-      }
-
-      if (inputLen > 0.02) {
-        const targetAngle = Math.atan2(moveY, moveX);
-        s.angle = turnToward(s.angle, targetAngle, TURN_RATE * dt);
-        s.x = clamp(s.x + moveX * PLAYER_SPEED * dt, PLAYER_RADIUS, FIELD_W - PLAYER_RADIUS);
-        s.y = clamp(s.y + moveY * PLAYER_SPEED * dt, PLAYER_RADIUS, FIELD_H - PLAYER_RADIUS);
-        s.traveled += inputLen * PLAYER_SPEED * dt;
-      }
-
-      // Camera follows the player, so the field scrolls beneath the car
-      // however it drives instead of the car being locked to one axis.
-      const camX = s.x;
-      const camY = s.y;
-      const toScreenX = (wx) => w / 2 + (wx - camX);
-      const toScreenY = (wy) => h / 2 + (wy - camY);
-
-      ctx.fillStyle = '#3c5c33';
-      ctx.fillRect(0, 0, w, h);
-
-      const fieldLeft = toScreenX(0);
-      const fieldTop = toScreenY(0);
-      ctx.fillStyle = '#6b8f4e';
-      ctx.fillRect(fieldLeft, fieldTop, FIELD_W, FIELD_H);
-
-      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-      ctx.lineWidth = 2;
-      const grid = 160;
-      for (let gx = 0; gx <= FIELD_W; gx += grid) {
-        ctx.beginPath();
-        ctx.moveTo(toScreenX(gx), toScreenY(0));
-        ctx.lineTo(toScreenX(gx), toScreenY(FIELD_H));
-        ctx.stroke();
-      }
-      for (let gy = 0; gy <= FIELD_H; gy += grid) {
-        ctx.beginPath();
-        ctx.moveTo(toScreenX(0), toScreenY(gy));
-        ctx.lineTo(toScreenX(FIELD_W), toScreenY(gy));
-        ctx.stroke();
-      }
-
-      ctx.strokeStyle = '#caa15a';
-      ctx.lineWidth = 10;
-      ctx.strokeRect(fieldLeft, fieldTop, FIELD_W, FIELD_H);
-
-      // Traffic: a fixed pool of cars that roams the whole field for the
-      // entire race (see stepNpc) and collides using real 2D distance, so
-      // hits register reliably instead of only along a single lane band.
-      s.npcs.forEach((npc) => {
-        stepNpc(npc, dt);
-
-        const dist = Math.hypot(npc.x - s.x, npc.y - s.y);
-        const hitRadius = PLAYER_RADIUS + NPC_RADIUS;
-        const nearRadius = hitRadius * NEAR_RADIUS_MULT;
-
-        if (dist < hitRadius && now - s.lastHit > HIT_COOLDOWN_MS) {
-          s.lastHit = now;
-          s.hits += 1;
-          s.hp -= npc.kind === 'truck' ? 30 : 20;
-          s.combo = 0;
-          const nx = (s.x - npc.x) / (dist || 1);
-          const ny = (s.y - npc.y) / (dist || 1);
-          s.x = clamp(s.x + nx * 26, PLAYER_RADIUS, FIELD_W - PLAYER_RADIUS);
-          s.y = clamp(s.y + ny * 26, PLAYER_RADIUS, FIELD_H - PLAYER_RADIUS);
-        } else if (dist < nearRadius && now - s.lastNear > NEAR_COOLDOWN_MS) {
-          s.lastNear = now;
-          s.near += 1;
-          s.combo += 1;
-          s.comboBest = Math.max(s.comboBest, s.combo);
-        }
-
-        if (npc.wasNear && dist >= nearRadius) {
-          s.over += 1;
-          s.combo += 1;
-          s.comboBest = Math.max(s.comboBest, s.combo);
-        }
-        npc.wasNear = dist < nearRadius;
-
-        const sx = toScreenX(npc.x);
-        const sy = toScreenY(npc.y);
-        if (sx > -60 && sx < w + 60 && sy > -60 && sy < h + 60) {
-          car(ctx, sx, sy, mobile ? 0.95 : 1, npc.kind === 'truck' ? '#777' : '#d84a4a', npc.angle + Math.PI / 2);
-        }
-      });
-
-      // Opponent car in multiplayer, drawn on the same shared field (it was
-      // never rendered before, which made multiplayer feel broken).
-      let remoteTraveled = 0;
-      if (mode === 'multi' && s.remote) {
-        const remoteX = clamp(((Number(s.remote.lane) || 0) + 2) / 4, 0, 1) * FIELD_W;
-        const remoteY = clamp(Number(s.remote.distance) || 0, 0, FIELD_H);
-        remoteTraveled = Number(s.remote.traveled) || 0;
-
-        const dist = Math.hypot(remoteX - s.x, remoteY - s.y);
-        const hitRadius = PLAYER_RADIUS * 2;
-        if (dist < hitRadius && now - s.lastRemoteHit > REMOTE_HIT_COOLDOWN_MS) {
-          s.lastRemoteHit = now;
-          s.hits += 1;
-          s.hp -= 8;
-          s.combo = 0;
-        }
-
-        car(ctx, toScreenX(remoteX), toScreenY(remoteY), 1.1, '#2e6bff', 0);
-      }
-
-      car(ctx, w / 2, h / 2, 1.15, '#ff2e2e', s.angle + Math.PI / 2);
-
-      s.hp = clamp(s.hp, 0, MAX_HP);
-      const place = mode === 'multi' && s.remote && remoteTraveled > s.traveled ? 2 : 1;
-
-      setHud({
-        distance: Math.round(s.traveled),
-        score: score(s),
-        hp: Math.round(s.hp),
-        near: s.near,
-        over: s.over,
-        combo: Math.floor(s.combo),
-        place,
-      });
-
-      if (mode === 'multi' && matchId && now - s.lastPublish > 120) {
-        s.lastPublish = now;
-        publishPlayerState(matchId, uid, {
-          ready: true,
-          distance: clamp(s.y, 0, FIELD_H),
-          lane: clamp((s.x / FIELD_W) * 4 - 2, -2, 2),
-          speed: clamp(Math.round(inputLen > 0.02 ? PLAYER_SPEED : 0), 0, 2000),
-          finished: false,
-          traveled: s.traveled,
-        }).catch(() => {});
-      }
-
-      if (s.hp <= 0) {
-        finishRun('WRECKED');
-        return;
-      }
-
-      raf.current = requestAnimationFrame(loop);
-    };
-
-    raf.current = requestAnimationFrame(loop);
-
-    return () => {
-      cancelAnimationFrame(raf.current);
-      window.removeEventListener('resize', resize);
-    };
-  }, [finishRun, matchId, mode, phase, uid]);
-
-  const touch = (event) => {
-    const r = event.currentTarget.getBoundingClientRect();
-    const cx = r.left + r.width / 2;
-    const cy = r.top + r.height / 2;
-    const max = r.width * 0.38;
-    const dx = event.clientX - cx;
-    const dy = event.clientY - cy;
-    const len = Math.hypot(dx, dy) || 1;
-    const f = Math.min(1, max / len);
-
-    joy.current.x = (dx * f) / max;
-    joy.current.y = (dy * f) / max;
-    joy.current.px = dx * f;
-    joy.current.py = dy * f;
-  };
-
-  if (phase === 'queue') {
-    return (
-      <div className="min-h-screen bg-[#111] text-white grid place-items-center p-5">
-        <div className="text-center">
-          <div className="text-[#43D17A] text-xs font-black tracking-[.3em]">MULTIPLAYER QUEUE</div>
-          <h1 className="text-4xl font-black mt-2">WAITING FOR RACER</h1>
-          <p className="text-[#888] mt-3">{status}</p>
-          <button
-            onClick={() => {
-              leaveQueue(uid).catch(() => {});
-              setPhase('menu');
-              setMode('single');
-            }}
-            className="mt-6 border border-[#555] rounded-lg px-5 py-2"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (phase === 'result') {
-    return (
-      <div className="min-h-screen bg-[#111] text-white grid place-items-center p-5">
-        <div className="w-full max-w-2xl rounded-2xl border border-[#333] bg-[#191919] p-8 text-center">
-          <div className="text-[#43D17A] text-xs font-black tracking-[.3em]">RACE ENDED</div>
-          <h1 className="text-5xl font-black mt-2">{result?.reason}</h1>
-          <div className="text-6xl font-black mt-6 text-[#FFD84D]">
-            {Number(result?.score || 0).toLocaleString()}
-          </div>
-          <p className="text-[#888] mt-2">
-            {Number(result?.distance || 0).toLocaleString()} m traveled
-          </p>
-          {result?.saved && (
-            <div className="text-[#43D17A] mt-4 font-bold">New racing record saved!</div>
-          )}
-          <div className="flex gap-3 justify-center mt-7">
-            <button
-              onClick={() => setPhase('menu')}
-              className="border border-[#555] rounded-lg px-5 py-3"
-            >
-              Back
-            </button>
-            <button
-              onClick={mode === 'single' ? single : queue}
-              className="bg-[#FF2E2E] rounded-lg px-5 py-3 font-black"
-            >
-              Race Again
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-[#111] text-white">
-      <header className="border-b-2 border-[#FF2E2E] px-5 py-4 flex justify-between">
-        <button onClick={onBack} className="text-[#aaa] font-bold">NINU GAMING</button>
-        <b className="text-[#43D17A] tracking-[.2em]">INFINITE RUSH</b>
-        <span className="text-xs text-[#777]">OPEN FIELD</span>
-      </header>
-
-      <main className="max-w-6xl mx-auto p-5 md:p-8">
-        <div className="grid md:grid-cols-[1.1fr_.9fr] gap-5">
-          <section className="rounded-2xl border border-[#333] bg-[#191919] p-6">
-            <div className="text-xs font-black tracking-[.3em] text-[#43D17A]">RACING</div>
-            <h1 className="text-5xl font-black mt-2">INFINITE RUSH</h1>
-            <p className="text-[#999] mt-3">
-              Drive freely around an open field. WASD moves the car in any direction you point
-              it - combine keys for diagonals. Dodge or ram the traffic roaming the field.
-            </p>
-
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value.slice(0, 32))}
-              placeholder="Player name"
-              className="mt-6 w-full bg-[#101010] border border-[#444] focus:border-[#43D17A] outline-none rounded-lg px-4 py-3"
-            />
-
-            <div className="grid sm:grid-cols-2 gap-3 mt-4">
-              <button
-                onClick={single}
-                className="rounded-xl border border-[#43D17A] p-4 text-left"
-              >
-                <b className="text-[#43D17A]">SINGLE PLAYER</b>
-                <div className="font-black text-xl mt-1">Chase a record</div>
-              </button>
-              <button
-                onClick={queue}
-                className="rounded-xl border border-[#FF2E2E] p-4 text-left"
-              >
-                <b className="text-[#FF2E2E]">MULTIPLAYER</b>
-                <div className="font-black text-xl mt-1">Find a rival</div>
-              </button>
-            </div>
-
-            {status && <div className="text-[#FF7777] text-sm mt-3">{status}</div>}
-          </section>
-
-          <section className="rounded-2xl border border-[#333] bg-[#191919] p-6">
-            <b>RACING LEADERBOARD</b>
-            <div className="space-y-1 mt-3 max-h-96 overflow-auto">
-              {rows.slice(0, 25).map((r, i) => (
-                <div
-                  key={r.id}
-                  className="grid grid-cols-[35px_1fr_100px] bg-[#222] rounded px-3 py-2"
-                >
-                  <span className="text-[#777]">{i + 1}</span>
-                  <span>{r.playerName}</span>
-                  <b className="text-right text-[#FFD84D]">
-                    {Number(r.score || 0).toLocaleString()}
-                  </b>
-                </div>
-              ))}
-            </div>
-          </section>
-        </div>
-      </main>
-
+    <div className="fixed inset-0 bg-black text-white overflow-hidden select-none">
       {phase === 'race' && (
-        <div className="fixed inset-0 bg-[#101010]">
-          <canvas ref={canvas} className="w-full h-full block touch-none" />
-
-          <div className="absolute top-3 left-3 right-3 grid grid-cols-3 gap-2 pointer-events-none">
-            <div className="bg-black/60 rounded-lg p-2">
-              <small>DISTANCE</small>
-              <b className="block text-xl">{hud.distance}m</b>
-            </div>
-            <div className="bg-black/60 rounded-lg p-2 text-center">
-              <small>{mode === 'multi' ? 'POSITION' : 'SINGLE'}</small>
-              <b className="block text-xl">
-                {mode === 'multi' ? (hud.place === 1 ? '1ST' : '2ND') : 'SOLO'}
-              </b>
-            </div>
-            <div className="bg-black/60 rounded-lg p-2 text-right">
-              <small>SCORE</small>
-              <b className="block text-xl text-[#FFD84D]">{hud.score.toLocaleString()}</b>
+        <div ref={mountRef} className="absolute inset-0">
+          <canvas ref={canvasRef} className="w-full h-full block" />
+          <div className="absolute top-3 left-3 right-3 flex justify-between items-start pointer-events-none font-bold tracking-wide text-sm">
+            <div>NEON MOUNTAIN RACER</div>
+            <div className="flex gap-3">
+              <span ref={lapRef}>LAP 1/{TOTAL_LAPS}</span>
+              <span ref={posRef}>1ST</span>
+              <span ref={timeRef}>0.0s</span>
             </div>
           </div>
-
-          <div className="absolute bottom-3 left-3 bg-black/60 rounded-lg p-2 text-xs pointer-events-none">
-            HP {hud.hp}% · Near {hud.near} · Overtakes {hud.over} · Combo {hud.combo}
+          <div className="absolute bottom-4 left-4 pointer-events-none">
+            <b ref={speedRef} className="text-4xl">0</b><small className="ml-1">KM/H</small>
           </div>
-
-          {typeof window !== 'undefined' && window.innerWidth < 850 ? (
-            <div
-              onPointerDown={(e) => {
-                joy.current.active = true;
-                e.currentTarget.setPointerCapture?.(e.pointerId);
-                touch(e);
-              }}
-              onPointerMove={(e) => joy.current.active && touch(e)}
-              onPointerUp={() => {
-                joy.current.active = false;
-                joy.current.x = 0;
-                joy.current.y = 0;
-                joy.current.px = 0;
-                joy.current.py = 0;
-              }}
-              onPointerCancel={() => {
-                joy.current.active = false;
-                joy.current.x = 0;
-                joy.current.y = 0;
-                joy.current.px = 0;
-                joy.current.py = 0;
-              }}
-              className="absolute left-5 bottom-5 w-36 h-36 rounded-full border-2 border-white/25 bg-black/30 touch-none"
-              style={{ touchAction: 'none' }}
-            >
-              <div
-                className="absolute left-1/2 top-1/2 w-16 h-16 rounded-full bg-white/20 border border-white/50"
-                style={{
-                  transform: `translate(calc(-50% + ${joy.current.px}px),calc(-50% + ${joy.current.py}px))`,
-                }}
-              />
-            </div>
-          ) : (
-            <div className="absolute bottom-4 right-4 bg-black/65 rounded-lg p-3 text-xs">
-              W = UP<br />
-              S = DOWN<br />
-              A = LEFT<br />
-              D = RIGHT<br />
-              COMBINE KEYS = DIAGONAL
+          <button
+            onClick={() => { engine.current?.finish('left'); }}
+            className="absolute top-3 right-3 md:right-24 text-xs border border-white/40 rounded px-3 py-1.5 pointer-events-auto"
+          >EXIT</button>
+          {touch && (
+            <div className="absolute inset-x-0 bottom-0 flex justify-between px-4 pb-4 pointer-events-none">
+              <div className="flex gap-3 pointer-events-auto">
+                <button data-control="left" className="w-16 h-16 rounded-full bg-white/15 text-2xl">◀</button>
+                <button data-control="right" className="w-16 h-16 rounded-full bg-white/15 text-2xl">▶</button>
+              </div>
+              <div className="flex gap-3 items-end pointer-events-auto">
+                <button data-control="handbrake" className="w-16 h-16 rounded-full bg-white/15 text-xs font-bold">DRIFT</button>
+                <button data-control="brake" className="w-16 h-16 rounded-full bg-white/15 text-xs font-bold">BRAKE</button>
+                <button data-control="boost" className="w-16 h-16 rounded-full bg-white/15 text-xs font-bold">BOOST</button>
+                <button data-control="gas" className="w-20 h-20 rounded-full bg-[#19d3ff]/30 text-xs font-bold">GAS</button>
+              </div>
             </div>
           )}
+        </div>
+      )}
+
+      {phase === 'menu' && (
+        <div className="h-full flex flex-col items-center justify-center gap-4 px-6">
+          <h1 className="text-3xl font-black tracking-wide">NEON <span className="text-[#19d3ff]">MOUNTAIN</span> RACER</h1>
+          <p className="text-white/60 text-sm">7 KM mountain circuit • 3 laps • AI or 1v1</p>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value.slice(0, 16))}
+            placeholder="Your name"
+            className="bg-white/10 border border-white/30 rounded px-4 py-2 text-center w-64"
+          />
+          {status && <div className="text-[#ff914d] text-sm">{status}</div>}
+          <button onClick={single} className="w-64 py-3 rounded-lg bg-[#19d3ff] text-black font-bold">SINGLE PLAYER</button>
+          <button onClick={queue} className="w-64 py-3 rounded-lg border-2 border-[#19d3ff] font-bold">FIND 1v1 RACE</button>
+          <button onClick={() => setShowLeaderboard(true)} className="w-64 py-3 rounded-lg border border-white/30 font-bold">LEADERBOARD</button>
+          <button onClick={onBack} className="text-white/50 text-sm mt-2">← NINU GAMING</button>
+        </div>
+      )}
+
+      {phase === 'queue' && (
+        <div className="h-full flex flex-col items-center justify-center gap-4">
+          <div className="animate-pulse text-lg font-bold">{status || 'Searching for a racer...'}</div>
+          <button onClick={cancelQueue} className="px-6 py-2 rounded border border-white/30">CANCEL</button>
+        </div>
+      )}
+
+      {phase === 'result' && result && (
+        <div className="h-full flex flex-col items-center justify-center gap-3 px-6">
+          <h2 className="text-2xl font-black">{result.reason === 'finished' ? 'RACE COMPLETE' : 'RACE ENDED'}</h2>
+          <div className="text-white/80">Score: <b>{result.score}</b> • Distance: <b>{result.distance}m</b> • Place: <b>{result.place}</b></div>
+          {!result.saved && <div className="text-[#ff914d] text-xs">Score could not be saved to the leaderboard.</div>}
+          <div className="flex gap-3 mt-2">
+            <button onClick={mode === 'single' ? single : queue} className="px-6 py-2 rounded bg-[#19d3ff] text-black font-bold">RACE AGAIN</button>
+            <button onClick={backToMenu} className="px-6 py-2 rounded border border-white/30">MENU</button>
+          </div>
+        </div>
+      )}
+
+      {showLeaderboard && (
+        <div className="fixed inset-0 z-40 bg-black/90 flex flex-col">
+          <div className="flex items-center justify-between p-4 border-b border-white/20">
+            <h2 className="font-bold tracking-wide">RACING LEADERBOARD</h2>
+            <button onClick={() => setShowLeaderboard(false)} className="text-sm border border-white/30 rounded-full px-4 py-1.5">Close</button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            {rows.length === 0 && <div className="text-white/50 text-sm">No races yet.</div>}
+            {rows.map((r, i) => (
+              <div key={r.id || r.userId} className="flex justify-between py-2 border-b border-white/10 text-sm">
+                <span>{i + 1}. {r.playerName}</span>
+                <span className="text-[#19d3ff] font-bold">{r.score}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

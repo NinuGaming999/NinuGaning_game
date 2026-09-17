@@ -1,8 +1,8 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, Suspense, lazy } from 'react';
 import Desktop from './components/Desktop';
 import Mobile from './components/Mobile';
 import GameHub from './components/GameHub';
-import RacingGame from './racing/RacingGameV2';
+const RacingGame = lazy(() => import('./racing/RacingGameV2'));
 import { useResponsive } from './hooks/useResponsive';
 import { useLeaderboard } from './hooks/useLeaderboard';
 import { useObserverFeed } from './hooks/useObserverFeed';
@@ -128,10 +128,12 @@ export default function App() {
 
   if (screen === 'racing') {
     return (
-      <RacingGame
-        initialPlayerName={playerName}
-        onBack={() => setScreen('hub')}
-      />
+      <Suspense fallback={<div className="fixed inset-0 bg-black text-white flex items-center justify-center font-bold">Loading racer...</div>}>
+        <RacingGame
+          initialPlayerName={playerName}
+          onBack={() => setScreen('hub')}
+        />
+      </Suspense>
     );
   }
 
