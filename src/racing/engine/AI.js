@@ -9,9 +9,18 @@ export class AIController{
     this.ready=true;
   }
   reset(){
-    const t=(.008-this.gridIndex*.005+1)%1;
-    this.progress=t;this.lap=1;this.distance=t;this.speed=0;
-    const p=this.track.point(t),tan=this.track.tangent(t);
+    // The car's spatial grid slot needs to wrap negative offsets around to
+    // "just behind the start line" (t just under 1). But distance/placement
+    // bookkeeping must NOT treat that wrapped value as real progress - doing
+    // so credited 4 of the 5 AI cars with ~98-99% of a lap before the race
+    // even began (this.distance was set from the wrapped t, not the real
+    // signed offset), which is why the player was consistently placed last
+    // no matter how they drove. Keep `progress` unwrapped (it can start
+    // slightly negative) and let it climb through 0 naturally; track.point()/
+    // tangent() already wrap negative t correctly for the actual 3D position.
+    const raw=.008-this.gridIndex*.005;
+    this.progress=raw;this.lap=1;this.distance=raw;this.speed=0;
+    const p=this.track.point(raw),tan=this.track.tangent(raw);
     this.mesh.position.copy(p);this.mesh.position.y+=.65;this.mesh.rotation.y=Math.atan2(tan.x,tan.z);
   }
   update(dt){

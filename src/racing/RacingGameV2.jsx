@@ -35,7 +35,6 @@ import {
 const AI_COLORS = ['#ff3d88', '#ffa63d', '#b07cff', '#68ff88', '#ff5d52'];
 const NEAR_MISS_DIST = 9;
 const NEAR_MISS_COOLDOWN_MS = 600;
-const OFFTRACK_COOLDOWN_MS = 800;
 
 function isTouchDevice() {
   return (typeof window !== 'undefined' && window.matchMedia?.('(pointer:coarse)').matches) || 'ontouchstart' in window;
@@ -48,6 +47,7 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
   const lapRef = useRef(null);
   const posRef = useRef(null);
   const timeRef = useRef(null);
+  const mapRef = useRef(null);
 
   const engine = useRef(null); // holds all the three.js/game-loop state for this mount
   const raceState = useRef(null); // { near, over, hits, lastPlace, lastNear, lastOffTrack, raceClock }
@@ -119,7 +119,46 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
       scene.add(opponentMesh);
     }
 
-    raceState.current = { near: 0, over: 0, hits: 0, lastPlace: 1, lastNearAt: 0, lastOffTrackAt: 0, offTrack: false, raceClock: 0, finished: false };
+    raceState.current = { near: 0, over: 0, hits: 0, lastPlace: 1, lastNearAt: 0, lastCollideAt: 0, raceClock: 0, finished: false };
+
+    // Minimap: cache the static track outline once (tracing hundreds of
+    // points every frame would be wasted work - the track never moves),
+    // then each frame just redraw that image and plot car dots on top.
+    let mapBg = null;
+    if (mapRef.current) {
+      const bg = document.createElement('canvas');
+      bg.width = 168; bg.height = 168;
+      const bc = bg.getContext('2d');
+      bc.fillStyle = 'rgba(0,0,0,.45)'; bc.fillRect(0, 0, 168, 168);
+      bc.strokeStyle = '#7a8590'; bc.lineWidth = 4; bc.beginPath();
+      const mapScale = 168 / 1560;
+      for (let i = 0; i <= 200; i += 1) {
+        const pt = track.point(i / 200);
+        const mx = 84 + pt.x * mapScale, my = 84 + pt.z * mapScale;
+        if (i) bc.lineTo(mx, my); else bc.moveTo(mx, my);
+      }
+      bc.stroke();
+      mapBg = bg;
+    }
+    const mapScale = 168 / 1560;
+    function drawMinimap() {
+      if (!mapRef.current || !mapBg) return;
+      const c = mapRef.current.getContext('2d');
+      c.clearRect(0, 0, 168, 168);
+      c.drawImage(mapBg, 0, 0);
+      if (mode === 'single') {
+        ai.forEach((a, i) => {
+          const mx = 84 + a.mesh.position.x * mapScale, my = 84 + a.mesh.position.z * mapScale;
+          c.fillStyle = AI_COLORS[i % AI_COLORS.length]; c.beginPath(); c.arc(mx, my, 3.5, 0, Math.PI * 2); c.fill();
+        });
+      } else if (opponentMesh?.visible) {
+        const mx = 84 + opponentMesh.position.x * mapScale, my = 84 + opponentMesh.position.z * mapScale;
+        c.fillStyle = '#ff914d'; c.beginPath(); c.arc(mx, my, 3.5, 0, Math.PI * 2); c.fill();
+      }
+      const px = 84 + playerMesh.position.x * mapScale, py = 84 + playerMesh.position.z * mapScale;
+      c.fillStyle = '#19d3ff'; c.strokeStyle = '#fff'; c.lineWidth = 1.5;
+      c.beginPath(); c.arc(px, py, 4.5, 0, Math.PI * 2); c.fill(); c.stroke();
+    }
 
     function resize() {
       const el = mountRef.current;
@@ -192,21 +231,34 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
 
       if (!rs.finished) {
         rs.raceClock += dt;
-        const wasOffTrack = player.offTrack;
         player.update(dt, input.state);
-        if (player.offTrack && !wasOffTrack) {
-          const now = performance.now();
-          if (now - rs.lastOffTrackAt > OFFTRACK_COOLDOWN_MS) { rs.hits += 1; rs.lastOffTrackAt = now; }
-        }
 
         if (mode === 'single') ai.forEach((a) => a.update(dt));
 
-        // Near-miss + overtake tracking against whichever opponents exist.
+        // Near-miss + overtake tracking, and real car-to-car collisions
+        // against whichever opponents exist. AI/opponent cars aren't
+        // rigid-body simulated (AI follows a fixed path along the track,
+        // and a multiplayer opponent's own physics runs on their client),
+        // so the player's car is the one that physically reacts to a hit -
+        // it gets pushed out and sheds speed, which reads as a real bump
+        // without fighting the other car's authoritative movement.
         const opponents = mode === 'single' ? ai.map((a) => a.mesh) : (opponentMesh?.visible ? [opponentMesh] : []);
         const now = performance.now();
+        const COLLISION_DIST = 3.2;
         for (const om of opponents) {
-          if (playerMesh.position.distanceTo(om.position) < NEAR_MISS_DIST && now - rs.lastNearAt > NEAR_MISS_COOLDOWN_MS) {
-            rs.near += 1; rs.lastNearAt = now;
+          const dx = playerMesh.position.x - om.position.x;
+          const dz = playerMesh.position.z - om.position.z;
+          const dy = Math.abs(playerMesh.position.y - om.position.y);
+          const dist = Math.hypot(dx, dz);
+          if (dy < 4 && dist < NEAR_MISS_DIST && now - rs.lastNearAt > NEAR_MISS_COOLDOWN_MS) rs.near += 1, rs.lastNearAt = now;
+          if (dy < 4 && dist < COLLISION_DIST) {
+            const safeDist = Math.max(dist, 0.05);
+            const nx = dx / safeDist, nz = dz / safeDist;
+            const overlap = COLLISION_DIST - safeDist;
+            playerMesh.position.x += nx * overlap;
+            playerMesh.position.z += nz * overlap;
+            player.speed *= 0.55;
+            if (now - rs.lastCollideAt > 450) { rs.hits += 1; rs.lastCollideAt = now; navigator.vibrate?.(40); }
           }
         }
         const currentPlace = place();
@@ -245,6 +297,7 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
 
       chase.update(dt, player);
       renderer.render(scene, camera);
+      drawMinimap();
     }
     loop();
 
@@ -349,6 +402,13 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
             onClick={() => { engine.current?.finish('left'); }}
             className="absolute top-3 right-3 md:right-24 text-xs border border-white/40 rounded px-3 py-1.5 pointer-events-auto"
           >EXIT</button>
+          <canvas
+            ref={mapRef}
+            width={168}
+            height={168}
+            className="absolute top-12 right-3 rounded-lg border border-white/25 pointer-events-none"
+            style={{ width: 128, height: 128 }}
+          />
           {touch && (
             <div className="absolute inset-x-0 bottom-0 flex justify-between px-4 pb-4 pointer-events-none">
               <div className="flex gap-3 pointer-events-auto">

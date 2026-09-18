@@ -40,9 +40,12 @@ export class CarPhysics{
   }
 
   reset(gridIndex=0){
-    const t=(.008-gridIndex*.005+1)%1;
-    const p=this.track.point(t),tan=this.track.tangent(t);
-    this.progress=t;this.lap=1;this.speed=0;this.distance=t;this.finished=false;
+    // See AI.js's reset() for why this must not wrap a negative grid offset
+    // into a near-1 progress value (it would falsely credit a car starting
+    // behind the line with almost a full lap of distance).
+    const raw=.008-gridIndex*.005;
+    const p=this.track.point(raw),tan=this.track.tangent(raw);
+    this.progress=raw;this.lap=1;this.speed=0;this.distance=raw;this.finished=false;
     // Track tangent points in the direction that counts as race-forward.
     // The car's +Z nose uses the same convention.
     this.yaw=Math.atan2(tan.x,tan.z);
