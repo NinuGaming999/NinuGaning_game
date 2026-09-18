@@ -31,6 +31,12 @@ export class CarPhysics{
     // without needing a full slip-angle tyre model.
     this.yaw=0;this.moveYaw=0;
     this.offTrack=false;
+    // Smoothed reference point used for ride height + off-track pull.
+    // Re-deriving this from a fresh discrete nearest-sample search every
+    // frame (with zero smoothing) is what caused visible shaking: which
+    // sample counts as "nearest" can flicker by one index frame-to-frame,
+    // and on steep mountain sections that flicker is a real height jump.
+    this._refPoint=new THREE.Vector3();
   }
 
   reset(gridIndex=0){
@@ -42,6 +48,7 @@ export class CarPhysics{
     this.yaw=Math.atan2(tan.x,tan.z);
     this.moveYaw=this.yaw;
     this.mesh.position.copy(p);this.mesh.position.y+=.65;this.mesh.rotation.y=this.yaw;
+    this._refPoint.copy(p);
     this.offTrack=false;
   }
 
@@ -96,7 +103,13 @@ export class CarPhysics{
     // Find where we are on the circuit BEFORE updating race progress.
     const nearest=this.track.nearestProgress(this.mesh.position,this.progress);
     const center=this.track.point(nearest);
-    const distXZ=Math.hypot(this.mesh.position.x-center.x,this.mesh.position.z-center.z);
+    // Smooth the raw search result instead of using it directly - this is
+    // what removes the shake: single-index flicker from the discrete
+    // search gets filtered out, while genuine elevation change (which
+    // happens gradually as you drive) still comes through with only a
+    // few milliseconds of lag, which is imperceptible.
+    this._refPoint.lerp(center,1-Math.exp(-20*dt));
+    const distXZ=Math.hypot(this.mesh.position.x-this._refPoint.x,this.mesh.position.z-this._refPoint.z);
     const edge=this.track.roadWidth*.8;
     this.offTrack=distXZ>this.track.roadWidth*.62;
 
@@ -105,11 +118,11 @@ export class CarPhysics{
       // teleport/snap, so it never feels like hitting a wall.
       const over=distXZ-edge;
       const pull=1-Math.exp(-1.6*dt*(1+over*.02));
-      this.mesh.position.x=THREE.MathUtils.lerp(this.mesh.position.x,center.x,pull);
-      this.mesh.position.z=THREE.MathUtils.lerp(this.mesh.position.z,center.z,pull);
+      this.mesh.position.x=THREE.MathUtils.lerp(this.mesh.position.x,this._refPoint.x,pull);
+      this.mesh.position.z=THREE.MathUtils.lerp(this.mesh.position.z,this._refPoint.z,pull);
     }
 
-    this.mesh.position.y=center.y+.65;
+    this.mesh.position.y=this._refPoint.y+.65;
     this.mesh.rotation.y=this.yaw;
 
     // IMPORTANT: race progress follows actual movement direction.
