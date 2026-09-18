@@ -21,9 +21,56 @@ export class WorldBuilder{
   }
   addBase(){
     this.buildTerrain();
+    this.buildRoadClearing();
     this.buildRidge();
     this.buildLighting();
     this.buildAtmosphere();
+  }
+
+  // An invisible "tunnel" volume that follows the road end-to-end. It
+  // writes to the depth buffer but never draws any color, and it has
+  // nothing to do with car physics whatsoever (collision only checks
+  // car-vs-car distances in RacingGameV2.jsx) - this is purely a render
+  // trick. Because it's rendered before the mountain ridge (renderOrder
+  // enforces that regardless of add order) and sits well outside the
+  // actual road/car space, any mountain geometry that ends up overlapping
+  // the road corridor gets hidden behind this invisible wall from the
+  // camera's point of view, while the real road surface and every car -
+  // which live *inside* the corridor, never behind its walls relative to
+  // the chase camera - are completely unaffected and keep rendering
+  // exactly as normal.
+  buildRoadClearing(){
+    const samples=this.track.samples;
+    const half=180;       // corridor half-width - generously covers even a badly-placed mountain's footprint
+    const bottomOff=-15;  // below local road height
+    const topOff=72;      // above local road height - clears the tallest ridge cones near the road
+    const positions=[];
+    const up=new THREE.Vector3(0,1,0);
+    const n=samples.length;
+    for(let i=0;i<n;i+=2){
+      const p0=samples[i], p1=samples[(i+2)%n];
+      const tan=p1.clone().sub(p0).normalize();
+      const side=new THREE.Vector3(-tan.z,0,tan.x); // shared for both ends of this short segment - adjacent samples are only ~10m apart so the twist is negligible
+      const mk=(p,s,vOff)=>p.clone().addScaledVector(side,s*half).add(up.clone().multiplyScalar(vOff));
+      const bl0=mk(p0,-1,bottomOff),tl0=mk(p0,-1,topOff),tr0=mk(p0,1,topOff),br0=mk(p0,1,bottomOff);
+      const bl1=mk(p1,-1,bottomOff),tl1=mk(p1,-1,topOff),tr1=mk(p1,1,topOff),br1=mk(p1,1,bottomOff);
+      // left wall
+      positions.push(bl0.x,bl0.y,bl0.z, tl0.x,tl0.y,tl0.z, tl1.x,tl1.y,tl1.z);
+      positions.push(bl0.x,bl0.y,bl0.z, tl1.x,tl1.y,tl1.z, bl1.x,bl1.y,bl1.z);
+      // roof
+      positions.push(tl0.x,tl0.y,tl0.z, tr0.x,tr0.y,tr0.z, tr1.x,tr1.y,tr1.z);
+      positions.push(tl0.x,tl0.y,tl0.z, tr1.x,tr1.y,tr1.z, tl1.x,tl1.y,tl1.z);
+      // right wall
+      positions.push(tr0.x,tr0.y,tr0.z, br0.x,br0.y,br0.z, br1.x,br1.y,br1.z);
+      positions.push(tr0.x,tr0.y,tr0.z, br1.x,br1.y,br1.z, tr1.x,tr1.y,tr1.z);
+    }
+    const geo=new THREE.BufferGeometry();
+    geo.setAttribute("position",new THREE.BufferAttribute(new Float32Array(positions),3));
+    const mat=new THREE.MeshBasicMaterial({colorWrite:false,depthWrite:true,depthTest:true});
+    const occluder=new THREE.Mesh(geo,mat);
+    occluder.renderOrder=-10; // must draw (and write depth) before the ridge below
+    occluder.frustumCulled=false; // it wraps the whole track; letting it get culled piecemeal risks gaps
+    this.scene.add(occluder);
   }
 
   // A height-displaced, vertex-colored ground that actually follows the

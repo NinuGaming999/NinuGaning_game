@@ -33,7 +33,7 @@ export class MountainTrack{
     this.quality=quality;
     this.samples=[];
     this.length=0;
-    this.roadWidth=12;
+    this.roadWidth=18;
     this.buildData();
     this.addRoad();
     this.decorQueue=this.makeDecorationQueue();
