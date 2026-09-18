@@ -77,8 +77,8 @@ export default function GameHub({ playerName, setPlayerName, onOpenArtifact, onO
             onClick={onOpenArtifact}
           />
           <GameCard
-            title="Infinite Rush"
-            description="Dodge traffic, push rivals, near-miss NPCs and race forever. Single-player records and 2-player live racing."
+            title="Neon Mountain Racer"
+            description="Race a 7km neon mountain circuit in full 3D - 3 laps against AI or live 1v1, with drifting, boost and a proper leaderboard."
             badge="GAME 02 • RACING"
             accent="text-[#43D17A]"
             onClick={onOpenRacing}
