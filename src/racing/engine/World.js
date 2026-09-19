@@ -22,6 +22,7 @@ export class WorldBuilder{
   addBase(){
     this.buildTerrain();
     this.buildRidge();
+    this.buildLandmarkTower();
     this.buildLighting();
     this.buildAtmosphere();
   }
@@ -189,6 +190,94 @@ export class WorldBuilder{
     ridge.instanceMatrix.needsUpdate=true;
     ridge.receiveShadow=true;
     this.scene.add(ridge);
+  }
+
+  // A tall Burj Khalifa-style tapered/tiered skyscraper landmark, visible
+  // from much of the circuit, with a glowing red/blue "NINU GAMING"
+  // projection wrapped around it like the real building's LED light shows.
+  // Placed well clear of the road and the mountain ridge (reuses the same
+  // clearance check as buildRidge()), and it's a single static landmark
+  // (8 small meshes total) so it costs nothing worth measuring.
+  buildLandmarkTower(){
+    const trackPts=this._trackPts||this.track.samples;
+    const clearOf=(x,z,minDist)=>{
+      for(let k=0;k<trackPts.length;k+=2){
+        const p=trackPts[k];
+        if((x-p.x)*(x-p.x)+(z-p.z)*(z-p.z)<minDist*minDist) return false;
+      }
+      return true;
+    };
+    let angle=0.65,radius=470;
+    for(let tries=0;tries<12;tries++){
+      const x=Math.cos(angle)*radius,z=Math.sin(angle)*radius;
+      if(clearOf(x,z,140))break;
+      radius+=40;
+    }
+    const baseX=Math.cos(angle)*radius,baseZ=Math.sin(angle)*radius;
+
+    const group=new THREE.Group();
+    group.position.set(baseX,-4,baseZ);
+    const glass=new THREE.MeshStandardMaterial({color:0x0a1620,metalness:.55,roughness:.2});
+    // Tapered tiers, each set back from the one below - the classic
+    // Burj Khalifa silhouette.
+    const tiers=[
+      {w:46,h:120,y:0},
+      {w:34,h:110,y:120},
+      {w:23,h:90,y:230},
+      {w:13,h:70,y:320},
+    ];
+    let totalH=0;
+    for(const t of tiers){
+      const seg=new THREE.Mesh(new THREE.BoxGeometry(t.w,t.h,t.w),glass);
+      seg.position.y=t.y+t.h/2;
+      group.add(seg);
+      totalH=t.y+t.h;
+    }
+    const spire=new THREE.Mesh(new THREE.CylinderGeometry(.6,3,40,8),glass);
+    spire.position.y=totalH+20;
+    group.add(spire);
+
+    // Glowing sign band wrapped around the widest tier, one screen per side.
+    const signTex=this.buildSignTexture();
+    const signMat=new THREE.MeshBasicMaterial({map:signTex,transparent:true,depthWrite:false});
+    const bandY=tiers[0].h*.62;
+    const bandW=tiers[0].w+.3,bandH=tiers[0].h*.42;
+    const offsets=[
+      {x:0,z:bandW/2+.05,ry:0},
+      {x:0,z:-bandW/2-.05,ry:Math.PI},
+      {x:bandW/2+.05,z:0,ry:Math.PI/2},
+      {x:-bandW/2-.05,z:0,ry:-Math.PI/2},
+    ];
+    for(const o of offsets){
+      const screen=new THREE.Mesh(new THREE.PlaneGeometry(bandW*.92,bandH),signMat);
+      screen.position.set(o.x,bandY,o.z);
+      screen.rotation.y=o.ry;
+      group.add(screen);
+    }
+    this.scene.add(group);
+  }
+
+  // Canvas-drawn "LED projection" texture: NINU in red, GAMING in blue,
+  // soft glow, transparent background so the dark tower glass shows
+  // through around the letters (matches how real building projections
+  // only light up where the image is, not the whole facade).
+  buildSignTexture(){
+    const w=512,h=768;
+    const c=document.createElement("canvas");c.width=w;c.height=h;
+    const ctx=c.getContext("2d");
+    ctx.clearRect(0,0,w,h);
+    ctx.textAlign="center";ctx.textBaseline="middle";
+    ctx.font="bold 92px sans-serif";
+    const glow=(text,y,color)=>{
+      ctx.shadowColor=color;ctx.shadowBlur=34;ctx.fillStyle=color;
+      ctx.fillText(text,w/2,y);
+      ctx.shadowBlur=14;ctx.fillText(text,w/2,y);
+    };
+    glow("NINU",h*.36,"#ff3040");
+    glow("GAMING",h*.6,"#2599ff");
+    const tex=new THREE.CanvasTexture(c);
+    tex.colorSpace=THREE.SRGBColorSpace;
+    return tex;
   }
 
   buildLighting(){
