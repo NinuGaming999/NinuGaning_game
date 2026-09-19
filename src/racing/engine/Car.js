@@ -2,17 +2,60 @@ import * as THREE from "three";
 
 export function createCar(color,name){
   const root=new THREE.Group();
-  const body=new THREE.Mesh(new THREE.BoxGeometry(2.2,.62,4.25),new THREE.MeshStandardMaterial({color:new THREE.Color(color),metalness:.55,roughness:.25}));
+  const paint=new THREE.MeshStandardMaterial({color:new THREE.Color(color),metalness:.55,roughness:.25});
+  const dark=new THREE.MeshStandardMaterial({color:0x121212,metalness:.3,roughness:.6});
+  const chrome=new THREE.MeshStandardMaterial({color:0xb8bfc6,metalness:.9,roughness:.25});
+
+  const body=new THREE.Mesh(new THREE.BoxGeometry(2.2,.62,4.25),paint);
   body.position.y=1.02;body.castShadow=true;
+  // Slightly tapered hood/trunk instead of a flat box front-to-back for a
+  // less blocky silhouette.
+  const hood=new THREE.Mesh(new THREE.BoxGeometry(1.9,.28,1.1),paint);
+  hood.position.set(0,1.0,1.72);hood.castShadow=true;
   const cabin=new THREE.Mesh(new THREE.BoxGeometry(1.62,.6,1.75),new THREE.MeshStandardMaterial({color:0x111a22,metalness:.1,roughness:.1,transparent:true,opacity:.95}));
   cabin.position.set(0,1.46,-.05);
-  root.add(body,cabin);
-  const bumper=new THREE.Mesh(new THREE.BoxGeometry(2,.2,.25),new THREE.MeshStandardMaterial({color:0x121212}));
+  root.add(body,hood,cabin);
+
+  const bumper=new THREE.Mesh(new THREE.BoxGeometry(2,.2,.25),dark);
   bumper.position.z=2.05; bumper.position.y=.83;root.add(bumper);
+  const splitter=new THREE.Mesh(new THREE.BoxGeometry(2.05,.08,.4),dark);
+  splitter.position.set(0,.55,2.15);root.add(splitter);
+
+  // Wheels with a two-tone rim for a less flat/plain look.
   for(const x of [-.97,.97]) for(const z of [-1.4,1.4]){
-    const w=new THREE.Mesh(new THREE.CylinderGeometry(.42,.42,.28,12),new THREE.MeshStandardMaterial({color:0x050505,roughness:1}));
+    const w=new THREE.Mesh(new THREE.CylinderGeometry(.42,.42,.28,14),new THREE.MeshStandardMaterial({color:0x050505,roughness:1}));
     w.rotation.z=Math.PI/2;w.position.set(x,.58,z);w.castShadow=true;root.add(w);
+    const rim=new THREE.Mesh(new THREE.CylinderGeometry(.24,.24,.3,7),chrome);
+    rim.rotation.z=Math.PI/2;rim.position.set(x,.58,z);root.add(rim);
   }
+
+  // Head/tail lights - unlit emissive-look boxes (cheap, reads as "lit" at
+  // a glance without adding real per-car light sources).
+  for(const x of [-.72,.72]){
+    const head=new THREE.Mesh(new THREE.BoxGeometry(.32,.16,.1),new THREE.MeshBasicMaterial({color:0xfff6d8}));
+    head.position.set(x,.98,2.16);root.add(head);
+    const tail=new THREE.Mesh(new THREE.BoxGeometry(.3,.16,.08),new THREE.MeshBasicMaterial({color:0xff2b2b}));
+    tail.position.set(x,.98,-2.14);root.add(tail);
+  }
+
+  // Side mirrors.
+  for(const x of [-.95,.95]){
+    const mirror=new THREE.Mesh(new THREE.BoxGeometry(.16,.16,.32),dark);
+    mirror.position.set(x,1.32,.35);root.add(mirror);
+  }
+
+  // Rear wing on two struts.
+  const wing=new THREE.Mesh(new THREE.BoxGeometry(1.5,.08,.5),dark);
+  wing.position.set(0,1.55,-1.95);root.add(wing);
+  for(const x of [-.55,.55]){
+    const strut=new THREE.Mesh(new THREE.BoxGeometry(.08,.4,.08),dark);
+    strut.position.set(x,1.32,-1.95);root.add(strut);
+  }
+
+  // Exhaust tip.
+  const exhaust=new THREE.Mesh(new THREE.CylinderGeometry(.09,.09,.35,8),chrome);
+  exhaust.rotation.x=Math.PI/2;exhaust.position.set(.6,.55,-2.18);root.add(exhaust);
+
   const glow=new THREE.Mesh(new THREE.BoxGeometry(1.7,.08,.08),new THREE.MeshBasicMaterial({color:new THREE.Color(color)}));
   glow.position.set(0,1.0,-2.16);root.add(glow);
 

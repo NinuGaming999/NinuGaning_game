@@ -143,6 +143,53 @@ export class MountainTrack{
       marker.position.copy(p).addScaledVector(roadside,sign*(this.roadWidth*.72));
       marker.position.y+=1.0; marker.rotation.y=yaw; this.scene.add(marker);
     }
+    this.addStreetLamps();
+  }
+  // Neon-styled street lamps lining the road (fits the game's established
+  // cyan/pink accent palette better than plain white light poles).
+  // Instanced (2 draw calls total for every lamp on the whole circuit) and
+  // built from emissive-look materials rather than real THREE.PointLights,
+  // which would each cost a lighting pass - dozens of real dynamic lights
+  // would undo the lighting-cost work already done elsewhere.
+  addStreetLamps(){
+    const spacing=110; // meters between lamps
+    const count=Math.max(1,Math.floor(this.length/spacing));
+    const poleGeo=new THREE.CylinderGeometry(.14,.2,5.6,7);
+    const poleMat=new THREE.MeshStandardMaterial({color:0x1c2128,metalness:.6,roughness:.5});
+    const armGeo=new THREE.BoxGeometry(1.6,.16,.16);
+    const bulbGeo=new THREE.IcosahedronGeometry(.42,1);
+    const bulbMat=new THREE.MeshBasicMaterial({color:0xffffff});
+    const pole=new THREE.InstancedMesh(poleGeo,poleMat,count);
+    const arm=new THREE.InstancedMesh(armGeo,poleMat,count);
+    const bulb=new THREE.InstancedMesh(bulbGeo,bulbMat,count);
+    pole.castShadow=arm.castShadow=false;
+    const m=new THREE.Matrix4(),pos=new THREE.Vector3(),quat=new THREE.Quaternion(),scl=new THREE.Vector3(1,1,1);
+    const col=new THREE.Color();
+    const offset=this.roadWidth*1.12;
+    for(let i=0;i<count;i++){
+      const t=(i*spacing)/this.length;
+      const p=this.point(t),tan=this.tangent(t);
+      const side=new THREE.Vector3(-tan.z,0,tan.x);
+      const sign=i%2?1:-1;
+      const yaw=Math.atan2(tan.x,tan.z);
+      const base=p.clone().addScaledVector(side,sign*offset);
+
+      pos.copy(base);pos.y+=2.8;
+      quat.setFromAxisAngle(new THREE.Vector3(0,1,0),yaw);
+      m.compose(pos,quat,scl);pole.setMatrixAt(i,m);
+
+      pos.copy(base);pos.y+=5.4;pos.addScaledVector(side,-sign*.8);
+      m.compose(pos,quat,scl);arm.setMatrixAt(i,m);
+
+      pos.copy(base);pos.y+=5.4;pos.addScaledVector(side,-sign*1.6);
+      m.compose(pos,quat,scl);bulb.setMatrixAt(i,m);
+      bulb.setColorAt(i,col.set(sign>0?0xff2e9c:0x19d3ff));
+    }
+    pole.instanceMatrix.needsUpdate=true;
+    arm.instanceMatrix.needsUpdate=true;
+    bulb.instanceMatrix.needsUpdate=true;
+    if(bulb.instanceColor)bulb.instanceColor.needsUpdate=true;
+    this.scene.add(pole,arm,bulb);
   }
   ribbonGeometry(samples,width,yOffset,lateralOffset=0){
     const verts=[],uvs=[];
