@@ -33,6 +33,66 @@ export class WorldBuilder{
   // and color is computed individually against the nearby track surface,
   // so the terrain reads as a proper valley/mountainside the road cuts
   // through rather than a painted floor.
+  // True per-pixel surface detail via textures rather than more geometry -
+  // adding enough vertices to get pixel-level detail directly into the
+  // terrain mesh (millions of them) would reintroduce the exact kind of
+  // lag spike already fixed elsewhere. A 512x512 canvas is ~262,000 real,
+  // independently-set pixels, tiled across the terrain by the GPU per
+  // rendered screen-pixel at essentially no added cost - vertex colors
+  // still drive the broad grass/dirt/rock/snow blend, this multiplies in
+  // fine-grained grain on top, and the normal map adds real per-pixel lit
+  // bumpiness without a single extra triangle.
+  buildDetailTextures(){
+    const size=512;
+    const detailCanvas=document.createElement("canvas");
+    detailCanvas.width=detailCanvas.height=size;
+    const dctx=detailCanvas.getContext("2d");
+    const dImg=dctx.createImageData(size,size);
+    for(let y=0;y<size;y++){
+      for(let x=0;x<size;x++){
+        let n=0,amp=1,freq=1,norm=0;
+        for(let o=0;o<4;o++){
+          n+=smoothNoise(x*freq,y*freq,1/48)*amp;
+          norm+=amp;amp*=.5;freq*=2.1;
+        }
+        n/=norm;
+        const v=Math.max(0,Math.min(255,Math.floor(170+(n-.5)*150)));
+        const i=(y*size+x)*4;
+        dImg.data[i]=v;dImg.data[i+1]=v;dImg.data[i+2]=v;dImg.data[i+3]=255;
+      }
+    }
+    dctx.putImageData(dImg,0,0);
+    const detailTex=new THREE.CanvasTexture(detailCanvas);
+    detailTex.wrapS=detailTex.wrapT=THREE.RepeatWrapping;
+    detailTex.repeat.set(220,220);
+    detailTex.colorSpace=THREE.SRGBColorSpace;
+
+    const normalCanvas=document.createElement("canvas");
+    normalCanvas.width=normalCanvas.height=size;
+    const nctx=normalCanvas.getContext("2d");
+    const nImg=nctx.createImageData(size,size);
+    const h=(x,y)=>smoothNoise(x,y,1/34)*.65+smoothNoise(x,y,1/11)*.35;
+    const strength=1.6;
+    for(let y=0;y<size;y++){
+      for(let x=0;x<size;x++){
+        const hl=h(x-1,y),hr=h(x+1,y),hd=h(x,y-1),hu=h(x,y+1);
+        const nx=(hl-hr)*strength,ny=(hd-hu)*strength,nz=1;
+        const len=Math.hypot(nx,ny,nz);
+        const i=(y*size+x)*4;
+        nImg.data[i]=Math.floor((nx/len*.5+.5)*255);
+        nImg.data[i+1]=Math.floor((ny/len*.5+.5)*255);
+        nImg.data[i+2]=Math.floor((nz/len*.5+.5)*255);
+        nImg.data[i+3]=255;
+      }
+    }
+    nctx.putImageData(nImg,0,0);
+    const normalTex=new THREE.CanvasTexture(normalCanvas);
+    normalTex.wrapS=normalTex.wrapT=THREE.RepeatWrapping;
+    normalTex.repeat.set(220,220);
+
+    return {detailTex,normalTex};
+  }
+
   buildTerrain(){
     const size=3200;
     const segs=this.quality.decorScale<1?90:130; // fewer verts on mobile
@@ -83,7 +143,10 @@ export class WorldBuilder{
     geo.setAttribute("color",new THREE.BufferAttribute(colors,3));
     geo.computeVertexNormals();
 
-    const ground=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1}));
+    const {detailTex,normalTex}=this.buildDetailTextures();
+    const ground=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({
+      vertexColors:true,roughness:1,map:detailTex,normalMap:normalTex,normalScale:new THREE.Vector2(.7,.7)
+    }));
     ground.receiveShadow=true;
     this.scene.add(ground);
     this._trackPts=trackPts;
