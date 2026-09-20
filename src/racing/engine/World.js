@@ -192,12 +192,10 @@ export class WorldBuilder{
     this.scene.add(ridge);
   }
 
-  // A tall Burj Khalifa-style tapered/tiered skyscraper landmark, visible
-  // from much of the circuit, with a glowing red/blue "NINU GAMING"
-  // projection wrapped around it like the real building's LED light shows.
-  // Placed well clear of the road and the mountain ridge (reuses the same
-  // clearance check as buildRidge()), and it's a single static landmark
-  // (8 small meshes total) so it costs nothing worth measuring.
+  // A tall Burj Khalifa-style tapered/tiered skyscraper landmark, with a
+  // glowing red/blue "NINU GAMING" projection wrapped around it like the
+  // real building's LED light shows. Placed in the middle of the map,
+  // inside the loop the road forms - not out past the mountain ridge.
   buildLandmarkTower(){
     const trackPts=this._trackPts||this.track.samples;
     const clearOf=(x,z,minDist)=>{
@@ -207,17 +205,45 @@ export class WorldBuilder{
       }
       return true;
     };
-    let angle=0.65,radius=470;
-    for(let tries=0;tries<12;tries++){
-      const x=Math.cos(angle)*radius,z=Math.sin(angle)*radius;
-      if(clearOf(x,z,140))break;
-      radius+=40;
+    // The average of every point on a closed loop like this circuit lands
+    // inside it - exactly "the middle of the map, inside the road's circle".
+    let cx=0,cz=0;
+    for(const p of trackPts){cx+=p.x;cz+=p.z;}
+    cx/=trackPts.length;cz/=trackPts.length;
+    let baseX=cx,baseZ=cz;
+    const minDist=70;
+    if(!clearOf(cx,cz,minDist)){
+      // The track isn't perfectly convex, so the raw centroid can end up
+      // too close to a part of the loop - spiral outward from it for the
+      // nearest interior spot that's still clear of the road.
+      spiral:
+      for(let r=10;r<=260;r+=15){
+        for(let a=0;a<Math.PI*2;a+=Math.PI/10){
+          const x=cx+Math.cos(a)*r,z=cz+Math.sin(a)*r;
+          if(clearOf(x,z,minDist)){baseX=x;baseZ=z;break spiral;}
+        }
+      }
     }
-    const baseX=Math.cos(angle)*radius,baseZ=Math.sin(angle)*radius;
+    // Seat the tower at the local ground level instead of a fixed height -
+    // the interior of the loop can sit anywhere from ~9 to ~150 units up.
+    let nearestY=0,bestD2=Infinity;
+    for(const p of trackPts){
+      const d2=(p.x-baseX)*(p.x-baseX)+(p.z-baseZ)*(p.z-baseZ);
+      if(d2<bestD2){bestD2=d2;nearestY=p.y;}
+    }
 
     const group=new THREE.Group();
-    group.position.set(baseX,-4,baseZ);
-    const glass=new THREE.MeshStandardMaterial({color:0x0a1620,metalness:.55,roughness:.2});
+    group.position.set(baseX,nearestY-5,baseZ);
+    // A genuinely glowing glass look: emissive so it's never dark
+    // regardless of light angle, high metalness/low roughness for sharp
+    // specular highlights off the sun, and a procedural window+reflection
+    // texture standing in for real environment reflections (there's no
+    // reflection cubemap in this scene, so PBR metalness alone would just
+    // look flat and dark - which is exactly what made it read as "black").
+    const glassTex=this.buildGlassTexture();
+    const glass=new THREE.MeshStandardMaterial({
+      map:glassTex,emissive:0x1c4a66,emissiveIntensity:.6,metalness:.85,roughness:.15
+    });
     // Tapered tiers, each set back from the one below - the classic
     // Burj Khalifa silhouette.
     const tiers=[
@@ -255,6 +281,40 @@ export class WorldBuilder{
       group.add(screen);
     }
     this.scene.add(group);
+  }
+
+  // Procedural glass-panel texture: window mullion grid + a few bright
+  // diagonal streaks standing in for reflected sky/light, since there's
+  // no real environment/reflection map in this scene.
+  buildGlassTexture(){
+    const w=256,h=512;
+    const c=document.createElement("canvas");c.width=w;c.height=h;
+    const ctx=c.getContext("2d");
+    const grad=ctx.createLinearGradient(0,0,0,h);
+    grad.addColorStop(0,"#4a8fb8");
+    grad.addColorStop(.5,"#1c4560");
+    grad.addColorStop(1,"#0e2836");
+    ctx.fillStyle=grad;ctx.fillRect(0,0,w,h);
+    ctx.strokeStyle="rgba(6,16,22,.55)";ctx.lineWidth=2;
+    for(let x=0;x<=w;x+=w/8){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();}
+    for(let y=0;y<=h;y+=h/18){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
+    ctx.globalCompositeOperation="lighter";
+    for(let i=0;i<5;i++){
+      const gx=(i/5)*w*1.4-w*.2;
+      const streak=ctx.createLinearGradient(gx,0,gx+80,h);
+      streak.addColorStop(0,"rgba(255,255,255,0)");
+      streak.addColorStop(.5,"rgba(255,255,255,.28)");
+      streak.addColorStop(1,"rgba(255,255,255,0)");
+      ctx.fillStyle=streak;
+      ctx.beginPath();
+      ctx.moveTo(gx,0);ctx.lineTo(gx+70,0);ctx.lineTo(gx+120,h);ctx.lineTo(gx+50,h);ctx.closePath();ctx.fill();
+    }
+    ctx.globalCompositeOperation="source-over";
+    const tex=new THREE.CanvasTexture(c);
+    tex.wrapS=tex.wrapT=THREE.RepeatWrapping;
+    tex.repeat.set(4,10);
+    tex.colorSpace=THREE.SRGBColorSpace;
+    return tex;
   }
 
   // Canvas-drawn "LED projection" texture: NINU in red, GAMING in blue,

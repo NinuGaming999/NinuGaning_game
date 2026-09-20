@@ -74,7 +74,7 @@ export class CarPhysics{
     // without needing a full slip-angle tyre model.
     this.yaw=0;this.moveYaw=0;
     this.offTrack=false;
-    // Smoothed reference point used for ride height + off-track pull.
+    this.spinTimer=0; // seconds of reduced grip remaining after a collision
     // Re-deriving this from a fresh discrete nearest-sample search every
     // frame (with zero smoothing) is what caused visible shaking: which
     // sample counts as "nearest" can flicker by one index frame-to-frame,
@@ -96,6 +96,16 @@ export class CarPhysics{
     this.mesh.position.copy(p);this.mesh.position.y+=.65;this.mesh.rotation.y=this.yaw;
     this._refPoint.copy(p);
     this.offTrack=false;
+    this.spinTimer=0;
+  }
+
+  // Called on a car-to-car collision: kicks the travel direction away from
+  // the body heading (the existing grip system in update() then pulls it
+  // back naturally over spinTimer seconds) so a hit reads as a genuine
+  // loss of control, not just a bolted-on speed penalty.
+  applyHit(strength,yawKick){
+    this.moveYaw+=yawKick;
+    this.spinTimer=Math.max(this.spinTimer,.55+strength*.4);
   }
 
   update(dt,input){
@@ -136,8 +146,12 @@ export class CarPhysics{
 
     // Grip: how quickly the travel direction catches up to where the car
     // is pointed. Handbrake loosens grip -> the tail steps out into a
-    // drift. Off-track grip is also reduced (loose gravel/grass).
-    const gripRate=(hand?2.6:16)*(this.offTrack?.6:1);
+    // drift. Off-track grip is also reduced (loose gravel/grass), and a
+    // recent collision (spinTimer, see applyHit()) loosens it hard so a
+    // hit reads as a real loss of control instead of a mere speed bump.
+    if(this.spinTimer>0)this.spinTimer=Math.max(0,this.spinTimer-dt);
+    const spinGrip=this.spinTimer>0?.22:1;
+    const gripRate=(hand?2.6:16)*(this.offTrack?.6:1)*spinGrip;
     let yawDiff=this.yaw-this.moveYaw;
     yawDiff=Math.atan2(Math.sin(yawDiff),Math.cos(yawDiff));
     this.moveYaw+=yawDiff*(1-Math.exp(-gripRate*dt));

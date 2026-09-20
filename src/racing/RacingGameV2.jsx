@@ -235,17 +235,22 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
 
         if (mode === 'single') ai.forEach((a) => a.update(dt));
 
-        // Near-miss + overtake tracking, and real car-to-car collisions
-        // against whichever opponents exist. AI/opponent cars aren't
-        // rigid-body simulated (AI follows a fixed path along the track,
-        // and a multiplayer opponent's own physics runs on their client),
-        // so the player's car is the one that physically reacts to a hit -
-        // it gets pushed out and sheds speed, which reads as a real bump
-        // without fighting the other car's authoritative movement.
-        const opponents = mode === 'single' ? ai.map((a) => a.mesh) : (opponentMesh?.visible ? [opponentMesh] : []);
+        // Near-miss + overtake tracking, and real, mutual car-to-car
+        // collisions: both sides get pushed apart and lose grip/control
+        // for a moment - AI cars get a knockback offset + a wobble that
+        // decays back to their line (see AI.js's hit()), and the player's
+        // own travel direction gets kicked away from its steering heading
+        // (see Car.js's applyHit()) so a hit reads as a real loss of
+        // control rather than just a speed penalty. A multiplayer
+        // opponent's own physics is authoritative on their client, so
+        // only the player's side reacts to that collision locally.
+        const opponents = mode === 'single'
+          ? ai.map((a) => ({ mesh: a.mesh, hit: (dir, str) => a.hit(dir, str) }))
+          : (opponentMesh?.visible ? [{ mesh: opponentMesh, hit: () => {} }] : []);
         const now = performance.now();
         const COLLISION_DIST = 3.2;
-        for (const om of opponents) {
+        for (const opp of opponents) {
+          const om = opp.mesh;
           const dx = playerMesh.position.x - om.position.x;
           const dz = playerMesh.position.z - om.position.z;
           const dy = Math.abs(playerMesh.position.y - om.position.y);
@@ -255,10 +260,33 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
             const safeDist = Math.max(dist, 0.05);
             const nx = dx / safeDist, nz = dz / safeDist;
             const overlap = COLLISION_DIST - safeDist;
-            playerMesh.position.x += nx * overlap;
-            playerMesh.position.z += nz * overlap;
-            player.speed *= 0.55;
+            playerMesh.position.x += nx * overlap * 0.6;
+            playerMesh.position.z += nz * overlap * 0.6;
+            om.position.x -= nx * overlap * 0.4;
+            om.position.z -= nz * overlap * 0.4;
+            const impactYaw = Math.atan2(nx, nz);
+            let yawKick = impactYaw - player.moveYaw;
+            yawKick = Math.atan2(Math.sin(yawKick), Math.cos(yawKick));
+            player.applyHit(Math.min(1, 0.35 + overlap * 0.25), yawKick * 0.5);
+            opp.hit(new THREE.Vector3(-nx, 0, -nz), Math.min(2.2, 1 + overlap * 0.6));
+            player.speed *= 0.6;
             if (now - rs.lastCollideAt > 450) { rs.hits += 1; rs.lastCollideAt = now; navigator.vibrate?.(40); }
+          }
+        }
+        // AI-vs-AI collisions (single player only - only 5 cars, cheap).
+        if (mode === 'single') {
+          for (let i = 0; i < ai.length; i += 1) {
+            for (let j = i + 1; j < ai.length; j += 1) {
+              const a = ai[i], b = ai[j];
+              const dx = a.mesh.position.x - b.mesh.position.x;
+              const dz = a.mesh.position.z - b.mesh.position.z;
+              const dist = Math.hypot(dx, dz);
+              if (dist < COLLISION_DIST && dist > 0.001) {
+                const nx = dx / dist, nz = dz / dist;
+                a.hit(new THREE.Vector3(nx, 0, nz), 0.8);
+                b.hit(new THREE.Vector3(-nx, 0, -nz), 0.8);
+              }
+            }
           }
         }
         const currentPlace = place();
