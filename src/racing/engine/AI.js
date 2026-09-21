@@ -138,6 +138,17 @@ export class AIController{
     else if(this._recovering&&Math.abs(diff)<.4)this._recovering=false;
     const recovering=this._recovering&&!unstuck;
 
+    // If the car is already sliding sideways, cranking the steering wheel
+    // harder doesn't fix that - it just keeps commanding more rotation
+    // than the tires can actually deliver, which is what turns a mild
+    // slide into a full spin. A real driver backs off the steering and
+    // the throttle once a slide is underway and lets the tires regrip,
+    // rather than fighting it with more input. This is what actually
+    // breaks the "diff grows -> steer harder -> slip grows -> diff grows
+    // more" feedback loop a naive PD-only controller falls into.
+    const slip=Math.abs(p.lateralSlip);
+    const slipEase=THREE.MathUtils.clamp(1-slip/9,.25,1);
+
     const input={
       // PD steering, not just P: reacting to the heading error alone
       // (diff) overshoots and oscillates on a system with real
@@ -146,9 +157,9 @@ export class AIController{
       // overshot past zero. Damping against the car's current angular
       // velocity is what actually lets it settle onto a heading instead
       // of swinging past it and fighting its way back over and over.
-      steer:THREE.MathUtils.clamp(diff*2.4-p.angularVel*.6,-1,1),
-      gas:unstuck?Math.abs(diff)<.9:!recovering&&p.speed<Math.min(safeSpeed,this.paceTarget+4),
-      brake:!unstuck&&(recovering||p.speed>safeSpeed+3),
+      steer:THREE.MathUtils.clamp((diff*2.4-p.angularVel*.6)*slipEase,-1,1),
+      gas:unstuck?Math.abs(diff)<.9:!recovering&&slip<6&&p.speed<Math.min(safeSpeed,this.paceTarget+4),
+      brake:!unstuck&&(recovering||p.speed>safeSpeed+3||slip>7),
       boost:false,handbrake:false,
     };
     p.update(dt,input);

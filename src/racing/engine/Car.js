@@ -73,6 +73,7 @@ export class CarPhysics{
     this.angularVel=0;       // rad/s - real rotational inertia, not an instant turn rate
     this.vel=new THREE.Vector3(); // actual world-space velocity (m/s); can point anywhere, not just "forward"
     this.speed=0;             // derived scalar (forward component of vel) kept for HUD/network/etc.
+    this.lateralSlip=0;       // derived scalar (sideways component of vel) - how much the car is sliding
     this.offTrack=false;
     this.spinTimer=0;
     this._refPoint=new THREE.Vector3();
@@ -85,7 +86,7 @@ export class CarPhysics{
     this.boostForce=5200;
     this.dragLinear=16;         // N per m/s - rolling resistance
     this.dragQuad=.62;          // N per (m/s)^2 - air resistance
-    this.gripStiffness=2600;    // N per m/s of lateral slip, before clamping to maxGripForce
+    this.gripStiffness=6200;    // N per m/s of lateral slip, before clamping to maxGripForce
     this.maxGripForce=15800;    // N - the cap that lets a fast, sharp turn genuinely break traction
     this.steerTorque=5.4;       // rad/s^2 at full steering input
     this.angularDamping=5.2;    // 1/s
@@ -102,6 +103,7 @@ export class CarPhysics{
     this.angularVel=0;
     this.vel.set(0,0,0);
     this.speed=0;
+    this.lateralSlip=0;
     this.mesh.position.copy(p);this.mesh.position.y+=.65;this.mesh.rotation.y=this.yaw;
     this._refPoint.copy(p);
     this.offTrack=false;
@@ -234,6 +236,7 @@ export class CarPhysics{
     this.mesh.position.y=this._refPoint.y+.65;
     this.mesh.rotation.y=this.yaw;
     this.speed=this.vel.dot(fwd);
+    this.lateralSlip=vs; // public: how much the car is currently sliding sideways relative to its heading
 
     // IMPORTANT: race progress follows actual movement direction.
     // A car turned around and driven with W therefore goes BACK around the
