@@ -236,17 +236,17 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
         if (mode === 'single') ai.forEach((a) => a.update(dt));
 
         // Near-miss + overtake tracking, and real, mutual car-to-car
-        // collisions: both sides get pushed apart and lose grip/control
-        // for a moment - AI cars get a knockback offset + a wobble that
-        // decays back to their line (see AI.js's hit()), and the player's
-        // own travel direction gets kicked away from its steering heading
-        // (see Car.js's applyHit()) so a hit reads as a real loss of
-        // control rather than just a speed penalty. A multiplayer
-        // opponent's own physics is authoritative on their client, so
-        // only the player's side reacts to that collision locally.
+        // collisions: both sides get a genuine momentum-conserving
+        // impulse (see CarPhysics.applyImpulse()) instead of a scripted
+        // push/kick, so a glancing hit and a square hit actually feel
+        // different, and speed/spin loss are a consequence of the impact,
+        // not an authored effect. A multiplayer opponent's own physics is
+        // authoritative on their client, so we estimate their velocity
+        // from their last reported speed+yaw to still get a believable
+        // local reaction rather than skipping the response entirely.
         const opponents = mode === 'single'
-          ? ai.map((a) => ({ mesh: a.mesh, hit: (dir, str) => a.hit(dir, str) }))
-          : (opponentMesh?.visible ? [{ mesh: opponentMesh, hit: () => {} }] : []);
+          ? ai.map((a) => ({ mesh: a.mesh, physics: a }))
+          : (opponentMesh?.visible ? [{ mesh: opponentMesh, physics: null }] : []);
         const now = performance.now();
         const COLLISION_DIST = 3.2;
         for (const opp of opponents) {
@@ -259,17 +259,18 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
           if (dy < 4 && dist < COLLISION_DIST) {
             const safeDist = Math.max(dist, 0.05);
             const nx = dx / safeDist, nz = dz / safeDist;
+            const normal = new THREE.Vector3(nx, 0, nz);
             const overlap = COLLISION_DIST - safeDist;
+            // Separate the (visual) positions so they don't keep
+            // overlapping every frame while the impulse plays out.
             playerMesh.position.x += nx * overlap * 0.6;
             playerMesh.position.z += nz * overlap * 0.6;
             om.position.x -= nx * overlap * 0.4;
             om.position.z -= nz * overlap * 0.4;
-            const impactYaw = Math.atan2(nx, nz);
-            let yawKick = impactYaw - player.moveYaw;
-            yawKick = Math.atan2(Math.sin(yawKick), Math.cos(yawKick));
-            player.applyHit(Math.min(1, 0.35 + overlap * 0.25), yawKick * 0.5);
-            opp.hit(new THREE.Vector3(-nx, 0, -nz), Math.min(2.2, 1 + overlap * 0.6));
-            player.speed *= 0.6;
+            const otherVel = opp.physics ? opp.physics.vel : new THREE.Vector3(Math.sin(om.userData.yaw || 0), 0, Math.cos(om.userData.yaw || 0)).multiplyScalar(om.userData.speed || 0);
+            const otherMass = opp.physics ? opp.physics.mass : player.mass;
+            player.applyImpulse(normal, otherVel, otherMass, .35);
+            if (opp.physics) opp.physics.applyImpulse(normal.clone().negate(), player.vel, player.mass, .35);
             if (now - rs.lastCollideAt > 450) { rs.hits += 1; rs.lastCollideAt = now; navigator.vibrate?.(40); }
           }
         }
@@ -283,8 +284,9 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
               const dist = Math.hypot(dx, dz);
               if (dist < COLLISION_DIST && dist > 0.001) {
                 const nx = dx / dist, nz = dz / dist;
-                a.hit(new THREE.Vector3(nx, 0, nz), 0.8);
-                b.hit(new THREE.Vector3(-nx, 0, -nz), 0.8);
+                const normal = new THREE.Vector3(nx, 0, nz);
+                a.applyImpulse(normal, b.vel, b.mass, .35);
+                b.applyImpulse(normal.clone().negate(), a.vel, a.mass, .35);
               }
             }
           }
