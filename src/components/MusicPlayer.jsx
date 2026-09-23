@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-const MUSIC_SRC = '/music/background.mp3';
+const MUSIC_SRC = 'public/music/background.mp3';
 const STORAGE_KEY = 'ninu-gaming-music-enabled';
 const DEFAULT_VOLUME = 0.35;
 
