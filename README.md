@@ -109,3 +109,24 @@ No JSONBin environment variables are required anymore.
 - A main stat cannot also be one of that piece's substats.
 
 DEF/HP/EM/ER are displayed for realism but the current artifact damage model only uses the stats specified by the original simulator design.
+
+
+## Background music
+
+The app now has one site-wide music controller that stays mounted while switching between the arcade hub, Artifact Roll Simulator, and Neon Mountain Racer. Music can be played or stopped from the floating **MUSIC ON / MUSIC OFF** control, and the preference is remembered in the browser.
+
+To add your music later:
+
+1. Create/open the folder `public/music/`.
+2. Put your music file there as `background.mp3`.
+3. Run/build the project normally.
+
+The exact path is:
+
+```
+public/music/background.mp3
+```
+
+You can use a different filename or supported browser audio format by changing `MUSIC_SRC` at the top of `src/components/MusicPlayer.jsx`.
+
+Because browsers commonly block autoplay until the visitor interacts with the page, the first click/tap/keypress will unlock playback when music is enabled. The player is global, so entering or leaving either game does not restart the music.
