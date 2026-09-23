@@ -6,7 +6,8 @@ const DEFAULT_VOLUME = 0.35;
 
 function readEnabledPreference() {
   try {
-    return window.localStorage.getItem(STORAGE_KEY) !== 'false';
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    return saved === null ? true : saved !== 'false';
   } catch {
     return true;
   }
@@ -62,7 +63,9 @@ export default function MusicPlayer() {
     window.addEventListener('pointerdown', unlock, { once: true, capture: true });
     window.addEventListener('keydown', unlock, { once: true, capture: true });
 
-    // Respect a previously saved "music on" preference when a browser allows autoplay.
+    // Music is ON by default for new visitors. A browser may block audible
+    // autoplay until the visitor interacts with the page; the first pointer
+    // or keyboard interaction retries playback automatically.
     if (enabledRef.current) {
       audio.play().catch(() => {});
     }
