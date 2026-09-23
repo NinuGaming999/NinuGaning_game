@@ -11,6 +11,7 @@ import { calculateDamage } from './utils/damageCalculator';
 import { getRarity } from './utils/rarityBadge';
 import { formatStatValue } from './utils/format';
 import { SLOT_ORDER } from './utils/artifactData';
+import MusicPlayer from './components/MusicPlayer';
 
 const ROLL_BUTTON_LOCK_MS = 2000;
 const REVEAL_DELAY_MS = 300;
@@ -115,6 +116,21 @@ export default function App() {
   const [screen, setScreen] = useState('hub');
   const [playerName, setPlayerName] = useState('');
 
+  return (
+    <>
+      <AppScreen
+        screen={screen}
+        isMobile={isMobile}
+        playerName={playerName}
+        setPlayerName={setPlayerName}
+        setScreen={setScreen}
+      />
+      <MusicPlayer />
+    </>
+  );
+}
+
+function AppScreen({ screen, isMobile, playerName, setPlayerName, setScreen }) {
   if (screen === 'artifact') {
     return (
       <ArtifactGame
