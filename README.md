@@ -1,9 +1,10 @@
 # NINU Gaming Arcade
 
-This repository contains two browser games that share the same site and Firebase project:
+This repository contains three browser games that share the same site and Firebase project:
 
 1. **Artifact Roll Simulator** — Arlecchino artifact RNG with its own leaderboard.
 2. **Infinite Rush** — arcade infinite-road racing with single-player records and 2-player browser multiplayer.
+3. **Elementals** — a 5-card elemental gacha/collection game with persistent collection data and a local duel simulator.
 
 ## Leaderboards are separate
 
@@ -11,9 +12,20 @@ Artifact scores live under `leaderboard/{userId}`.
 
 Racing scores live under `racingLeaderboard/{userId}`.
 
-They never compete with or overwrite each other. Both use the same deterministic username ID system: trimmed, lowercase names map to one Firebase-safe ID, so the same name always maps to the same record.
+They never compete with or overwrite each other. Elementals only reads the existing best scores to calculate Arcade Points. All games use the same deterministic username ID system.
 
 For artifacts, one name stores only the highest Melt Damage. For racing, one name stores only the highest racing score.
+
+For Elementals, `cardCurrency/{userId}/spent` stores points already spent and `cardCollection/{userId}/{cardId}` stores owned-card counts.
+
+## Elementals
+
+- 35 cards: 5 rarities across 7 elements.
+- A pack costs 10 Arcade Points and contains 5 cards.
+- Arcade Points = floor(best racing score / 100) + floor(best artifact Melt Damage / 500) - points already spent.
+- Collection and spent points persist in Firebase; the existing artifact/racing records are never written by Elementals.
+- Elemental reactions and named card abilities are resolved by the local duel engine.
+- Card art is intentionally replaceable: add `imageUrl` to a card record later; the UI currently generates element/rarity placeholder art.
 
 ## Infinite Rush
 
@@ -70,6 +82,9 @@ liveRolls/{rollId}               # Artifact observer feed
 racingLeaderboard/{userId}       # Racing best only
 racingQueue/{userId}             # Multiplayer queue
 racingMatches/{matchId}          # 2-player match state
+
+cardCurrency/{userId}/spent      # Elementals spent points
+cardCollection/{userId}/{cardId} # Elementals owned cards
 ```
 
 The browser uses the Firebase web SDK already loaded by `index.html`; no Firebase Admin credential is stored in the repository.
