@@ -1,7 +1,17 @@
-import { getUserIdFromName } from './firebaseService';
+import { getCurrentUser } from './authService';
 
 const db = window.firebase.database();
 const MAX_RACING_LEADERBOARD = 200;
+
+function requireUser() {
+  const user = getCurrentUser();
+  if (!user || !user.emailVerified) throw new Error('You must be signed in with a verified email.');
+  return user;
+}
+
+function displayName(user) {
+  return String(user.displayName || user.email?.split('@')[0] || 'Player').trim().slice(0, 30);
+}
 
 export function subscribeToRacingLeaderboard(onData, onError) {
   const ref = db.ref('racingLeaderboard').orderByChild('score').limitToLast(MAX_RACING_LEADERBOARD);
@@ -16,15 +26,13 @@ export function subscribeToRacingLeaderboard(onData, onError) {
   return () => ref.off('value', handler);
 }
 
-export async function saveRacingScore({ playerName, score, distance, nearMisses, overtakes, collisions }) {
-  const userId = getUserIdFromName(playerName);
-  if (!userId) throw new Error('A valid player name is required.');
-
-  const userRef = db.ref(`racingLeaderboard/${userId}`);
+export async function saveRacingScore({ score, distance, nearMisses, overtakes, collisions }) {
+  const user = requireUser();
+  const userId = user.uid;
   const entry = {
     id: userId,
     userId,
-    playerName: String(playerName).trim(),
+    playerName: displayName(user),
     score: Math.max(0, Math.round(Number(score) || 0)),
     distance: Math.max(0, Math.round(Number(distance) || 0)),
     nearMisses: Math.max(0, Math.round(Number(nearMisses) || 0)),
@@ -32,77 +40,61 @@ export async function saveRacingScore({ playerName, score, distance, nearMisses,
     collisions: Math.max(0, Math.round(Number(collisions) || 0)),
     timestamp: Date.now(),
   };
-
+  const userRef = db.ref(`racingLeaderboard/${userId}`);
   const transaction = await userRef.transaction((current) => {
     if (!current) return entry;
     return entry.score > (Number(current.score) || 0) ? entry : undefined;
   });
-
   return transaction.snapshot.val() || null;
 }
 
-export function queuePlayer(userId, playerName) {
-  return db.ref(`racingQueue/${userId}`).set({ userId, playerName, createdAt: window.firebase.database.ServerValue.TIMESTAMP });
+export function queuePlayer() {
+  const user = requireUser();
+  return db.ref(`racingQueue/${user.uid}`).set({
+    userId: user.uid,
+    playerName: displayName(user),
+    createdAt: window.firebase.database.ServerValue.TIMESTAMP,
+  });
 }
 
-export function leaveQueue(userId) {
+export function leaveQueue(userId = requireUser().uid) {
   return db.ref(`racingQueue/${userId}`).remove();
 }
 
 export function subscribeToQueue(onData, onError) {
   const ref = db.ref('racingQueue').orderByChild('createdAt');
-  const handler = (snapshot) => {
-    const value = snapshot.val() || {};
-    onData(Object.values(value));
-  };
+  const handler = (snapshot) => onData(Object.values(snapshot.val() || {}));
   ref.on('value', handler, onError);
   return () => ref.off('value', handler);
 }
 
-function makeMatchId(a, b) {
-  return [a, b].sort().join('__');
-}
+function makeMatchId(a, b) { return [a, b].sort().join('__'); }
 
 function seededNumber(text) {
   let h = 2166136261;
-  for (let i = 0; i < text.length; i += 1) {
-    h ^= text.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
+  for (let i = 0; i < text.length; i += 1) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
   return Math.abs(h >>> 0);
 }
 
 export async function createOrJoinDeterministicMatch(a, b, aName, bName) {
+  const user = requireUser();
+  if (user.uid !== a && user.uid !== b) throw new Error('Not a participant.');
   const [firstId, secondId] = [a, b].sort();
   const matchId = makeMatchId(firstId, secondId);
   const ref = db.ref(`racingMatches/${matchId}`);
   const seed = seededNumber(matchId);
-
-  await ref.transaction((current) => {
-    if (current) return;
-    return {
-      id: matchId,
-      seed,
-      status: 'waiting',
-      createdAt: Date.now(),
-      players: {
-        [firstId]: { userId: firstId, playerName: firstId === a ? aName : bName },
-        [secondId]: { userId: secondId, playerName: secondId === a ? aName : bName },
-      },
-      states: {},
-      startAt: 0,
-      finish: null,
-    };
+  await ref.transaction((current) => current || {
+    id: matchId, seed, status: 'waiting', createdAt: Date.now(),
+    players: {
+      [firstId]: { userId: firstId, playerName: firstId === a ? aName : bName },
+      [secondId]: { userId: secondId, playerName: secondId === a ? aName : bName },
+    },
+    states: {}, startAt: 0, finish: null,
   });
-
-  // Seed both participant slots as ready. This makes matchmaking deterministic:
-  // either browser can create the room and the room can immediately start its
-  // synchronized countdown without waiting for a React render cycle.
   await db.ref(`racingMatches/${matchId}/states`).update({
     [firstId]: { userId: firstId, ready: true, distance: 0, lane: 0, speed: 0, finished: false },
     [secondId]: { userId: secondId, ready: true, distance: 0, lane: 0, speed: 0, finished: false },
   });
-
   await startMatchIfReady(matchId);
   return matchId;
 }
@@ -115,32 +107,32 @@ export function subscribeToMatch(matchId, onData, onError) {
 }
 
 export function publishPlayerState(matchId, userId, state) {
+  const current = requireUser();
+  if (current.uid !== userId) return Promise.reject(new Error('Identity mismatch.'));
   return db.ref(`racingMatches/${matchId}/states/${userId}`).set({
-    ...state,
-    userId,
+    ...state, userId,
     lastSeen: window.firebase.database.ServerValue.TIMESTAMP,
   });
 }
 
 export async function startMatchIfReady(matchId) {
+  const currentUser = requireUser();
   const ref = db.ref(`racingMatches/${matchId}`);
   const now = Date.now();
   const tx = await ref.transaction((current) => {
-    if (!current || current.status !== 'waiting') return;
+    if (!current || current.status !== 'waiting' || !current.players?.[currentUser.uid]) return undefined;
     const states = current.states || {};
-    const playerIds = Object.keys(current.players || {});
-    const bothReady = playerIds.length === 2 && playerIds.every((id) => states[id]?.ready);
-    if (!bothReady) return;
+    const playerIds = Object.keys(current.players);
+    if (playerIds.length !== 2 || !playerIds.every((id) => states[id]?.ready)) return undefined;
     return { ...current, status: 'racing', startAt: now + 3500 };
   });
   return tx.snapshot.val();
 }
 
 export function finishMatch(matchId, winnerId, winnerScore) {
-  return db.ref(`racingMatches/${matchId}/finish`).transaction((current) => {
-    if (current) return;
-    return { winnerId, winnerScore, finishedAt: Date.now() };
+  const current = requireUser();
+  if (winnerId !== current.uid) throw new Error('Winner identity mismatch.');
+  return db.ref(`racingMatches/${matchId}/finish`).transaction((value) => value || {
+    winnerId, winnerScore, finishedAt: Date.now(),
   });
 }
-
-export { getUserIdFromName };
