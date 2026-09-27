@@ -17,6 +17,15 @@ const names={
  geo:[['pebble-golem','Pebble Golem','Steady Ground',[4,5,1]],['shardback-tortoise','Shardback Tortoise','Crystal Skin',[5,8,2]],['stoneheart-golem','Stoneheart Golem','Bulwark',[8,9,1]],['titan-of-the-range','Titan of the Range','Mountain’s Verdict',[10,10,2]],['sovereign-of-strata','Sovereign of Strata','Bedrock Throne',[10,14,2]]],
  dendro:[['sprout-imp','Sprout Imp','Bud',[3,3,4]],['thornback-boar','Thornback Boar','Bramble Guard',[6,5,4]],['verdant-treant','Verdant Treant','Bloomburst',[7,9,2]],['worldroot-avatar','Worldroot Avatar','Everseed',[8,8,6]],['genesis-bloom','Genesis Bloom','First Spring',[10,10,8]]]
 };
+const abilityText={
+ Scorch:'Deals a small burn tick before the main clash.', 'Flash Step':'Acts first on the opening turn.', Eruption:'Deals bonus damage when striking second.', Rebirth:'Survives a lethal blow once.', 'Ashfall Crown':'Boosts reaction damage.',
+ 'Slip Current':'Has a chance to dodge the first hit.', Surge:'Heals after winning a clash.', Undertow:'Slows the opponent.', 'Tidal Wrath':'Gains damage as HP is lost.', 'Drowning Grasp':'Frozen lasts longer.',
+ 'Chill Step':'Slows the opponent on hit.', 'Numbing Claw':'May skip the opponent next turn.', Bulwark:'Blocks the first hit.', 'Absolute Zero':'Guarantees the first Hydro Frozen.', 'Crown of Frost':'Reduces Melt and Superconduct damage.',
+ 'Static Nip':'May strike twice.', 'Chain Spark':'Boosts damage while damage-over-time is active.', Overcharge:'Doubles Overloaded bonus.', 'Judgment Arc':'Ignores Superconduct defense reduction.', Eclipse:"Disables the opponent's special ability.",
+ Tailwind:'Acts first on the opening turn.', 'Wide Swirl':'Swirl also reduces defense.', 'Vacuum Wall':'Halves the first hit received.', 'Eye of the Storm':'Cannot be slowed or skipped.', 'Maelstrom Crown':'Swirl applies damage-over-time.',
+ 'Steady Ground':'Reduces the first hit.', 'Crystal Skin':'Starts with a shield.', 'Mountain’s Verdict':'Doubles Crystallize shields.', 'Bedrock Throne':'Reduces incoming damage.',
+ Bud:'Heals at the start of its turn.', 'Bramble Guard':'Reflects some damage.', Bloomburst:'Heals on Bloom.', Everseed:'Revives once.', 'First Spring':'Amplifies reaction bonuses.'
+};
 export const CARDS=Object.entries(names).flatMap(([element,list])=>list.map((x,i)=>({id:x[0],name:x[1],rarity:RARITIES[i],element,category:'creature',stats:{power:x[3][0],defense:x[3][1],speed:x[3][2]},ability:{name:x[2],description:abilityText[x[2]]||'Uses its element and base stats to shape the duel.'},flavorText:'A unique elemental card in the Genesis set.',imageUrl:null})));
 const abilityText={
  Scorch:'Deals a small burn tick before the main clash.', 'Flash Step':'Acts first on the opening turn.', Eruption:'Deals bonus damage when striking second.', Rebirth:'Survives a lethal blow once.', 'Ashfall Crown':'Boosts reaction damage.',
