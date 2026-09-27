@@ -87,13 +87,62 @@ cardCurrency/{userId}/spent      # Elementals spent points
 cardCollection/{userId}/{cardId} # Elementals owned cards
 ```
 
-The browser uses the Firebase web SDK already loaded by `index.html`; no Firebase Admin credential is stored in the repository.
+The browser uses Firebase Authentication, Realtime Database, and the callable Functions client SDK loaded by `index.html`. No Firebase Admin credential is stored in the repository.
+
+## Accounts and database security
+
+The arcade now uses Firebase Authentication with email/password accounts. Registration creates a Firebase Auth user, stores only a small profile record, sends an email verification message, and signs the user out until verification is complete. Login, password reset, and persistent sessions are handled by Firebase Auth; passwords are never stored in Realtime Database.
+
+The old deterministic username IDs are no longer used for new data. All game-owned records use the Firebase Auth UID. The existing Artifact and Racing record shapes remain the same, so their gameplay/leaderboard code still reads the same fields.
+
+Elementals pack opening is server-authoritative through \`functions/index.js\`: the verified UID is supplied by Firebase Auth, the function calculates available Arcade Points from the existing best scores, reserves the 10-point pack cost transactionally, generates the five cards server-side, updates the collection transactionally, and returns the pack.
+
+\`database.rules.json\` is the complete replacement rules file. It requires authenticated, email-verified users for game data, limits each user to their own profile/leaderboard/queue/state records, and makes Elementals currency/collection records server-write-only.
+
+### Firebase setup
+
+Enable **Authentication → Sign-in method → Email/Password** in the Firebase console before launching the new account UI.
+
+Install the Firebase CLI, then deploy the database rules and Functions:
+
+\`\`\`bash
+firebase login
+firebase use arlecchino-artifact-simulator
+cd functions
+npm install
+cd ..
+firebase deploy --only database,functions
+\`\`\`
+
+### Fresh database reset
+
+The new system is designed for a clean database. The repository includes a guarded reset utility:
+
+\`\`\`bash
+cd functions
+npm install
+node tools/reset-firebase.cjs --confirm-reset-ninu-arcade
+\`\`\`
+
+Run it only with a local Google/Firebase service-account credential available through Application Default Credentials or \`GOOGLE_APPLICATION_CREDENTIALS\`. The credential file is ignored by \`.gitignore\` and must never be committed.
+
+The reset clears Realtime Database only. Firebase Authentication users are separate and are not deleted by this command.
+
+### Admin management
+
+Grant an admin custom claim from a trusted machine:
+
+\`\`\`bash
+cd functions
+node tools/set-admin.cjs your-email@example.com
+\`\`\`
+
+The script uses the Firebase Admin SDK and never stores the credential in the repository.
 
 ## Realtime Database rules
 
-`database.rules.json` now contains rules for both games. After pulling/deploying this version, publish the latest rules in **Firebase Console → Realtime Database → Rules**.
+\`database.rules.json\` is the full replacement file for this system. After the fresh reset, deploy it with the Firebase CLI command above.
 
-The racing leaderboard uses the same one-user/highest-score pattern as the artifact leaderboard. Match/queue paths are intentionally public for this account-free prototype; they are not intended to be a cryptographically secure anti-cheat system.
 
 ## Development
 
