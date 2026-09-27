@@ -26,7 +26,7 @@ export default function Mobile({
     <div className="min-h-screen bg-[#1A1A1A] flex flex-col pb-[66px]">
       <Header onBack={onBack} />
       <div className="flex flex-col items-center gap-4 p-4">
-        <NameInput value={playerName} onChange={setPlayerName} disabled={rolling} />
+        <NameInput value={playerName} disabled={rolling} readOnly />
         {nameError && <div className="text-[#FF2E2E] text-sm">{nameError}</div>}
         <ArtifactCard roll={roll} />
         <StatsBreakdown roll={roll} />
