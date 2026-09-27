@@ -93,9 +93,8 @@ export async function createOrJoinDeterministicMatch(a, b, aName, bName) {
     },
     states: {}, startAt: 0, finish: null,
   });
-  await db.ref(`racingMatches/${matchId}/states`).update({
-    [firstId]: { userId: firstId, ready: true, distance: 0, lane: 0, speed: 0, finished: false },
-    [secondId]: { userId: secondId, ready: true, distance: 0, lane: 0, speed: 0, finished: false },
+  await db.ref(`racingMatches/${matchId}/states/${user.uid}`).set({
+    userId: user.uid, ready: true, distance: 0, lane: 0, speed: 0, finished: false,
   });
   await startMatchIfReady(matchId);
   return matchId;
