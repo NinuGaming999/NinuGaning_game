@@ -3,6 +3,7 @@ import Desktop from './components/Desktop';
 import Mobile from './components/Mobile';
 import GameHub from './components/GameHub';
 const RacingGame = lazy(() => import('./racing/RacingGameV2'));
+const CardGame = lazy(() => import('./cardgame/CardGame'));
 import { useResponsive } from './hooks/useResponsive';
 import { useLeaderboard } from './hooks/useLeaderboard';
 import { useObserverFeed } from './hooks/useObserverFeed';
@@ -153,12 +154,24 @@ function AppScreen({ screen, isMobile, playerName, setPlayerName, setScreen }) {
     );
   }
 
+  if (screen === 'cards') {
+    return (
+      <Suspense fallback={<div className="fixed inset-0 bg-black text-white flex items-center justify-center font-bold">Loading cards...</div>}>
+        <CardGame
+          initialPlayerName={playerName}
+          onBack={() => setScreen('hub')}
+        />
+      </Suspense>
+    );
+  }
+
   return (
     <GameHub
       playerName={playerName}
       setPlayerName={setPlayerName}
       onOpenArtifact={() => setScreen('artifact')}
       onOpenRacing={() => setScreen('racing')}
+      onOpenCards={() => setScreen('cards')}
     />
   );
 }
