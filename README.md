@@ -12,7 +12,7 @@ Artifact scores live under `leaderboard/{userId}`.
 
 Racing scores live under `racingLeaderboard/{userId}`.
 
-They never compete with or overwrite each other. Elementals only reads the existing best scores to calculate Arcade Points. All games use the same deterministic username ID system.
+They never compete with or overwrite each other. Elementals only reads the existing best scores to calculate Arcade Points. New game records use the authenticated Firebase UID.
 
 For artifacts, one name stores only the highest Melt Damage. For racing, one name stores only the highest racing score.
 
