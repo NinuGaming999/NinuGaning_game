@@ -1,3 +1,5 @@
+import { getCurrentUser } from './authService';
+
 const FIREBASE_CONFIG = {
   apiKey: 'AIzaSyBMbVLUSuDwRsrZ91-XC-sl1jofX4Y4Jyk',
   authDomain: 'arlecchino-artifact-simulator.firebaseapp.com',
@@ -9,24 +11,20 @@ const FIREBASE_CONFIG = {
   measurementId: 'G-YTF5XGNW11',
 };
 
-if (!window.firebase) {
-  throw new Error('Firebase SDK was not loaded.');
-}
+if (!window.firebase) throw new Error('Firebase SDK was not loaded.');
 
-const app = window.firebase.apps.length
-  ? window.firebase.app()
-  : window.firebase.initializeApp(FIREBASE_CONFIG);
-
+const app = window.firebase.apps.length ? window.firebase.app() : window.firebase.initializeApp(FIREBASE_CONFIG);
 const database = window.firebase.database(app);
 const LEADERBOARD_LIMIT = 200;
 const LIVE_ROLL_LIMIT = 30;
 
-// One deterministic Firebase key per username. Encoding makes the key safe for
-// Firebase even when a name contains spaces, slashes, dots, brackets, etc.
-// Normalization is case-insensitive, so "Ninu" and "ninu" are the same user.
+export function getCurrentUserId() {
+  return getCurrentUser()?.uid || '';
+}
+
 export function getUserIdFromName(name) {
-  const normalized = String(name || '').trim().toLowerCase();
-  return encodeURIComponent(normalized).replace(/\./g, '%2E');
+  // Kept only for compatibility with older modules. New records use auth.uid.
+  return encodeURIComponent(String(name || '').trim().toLowerCase()).replace(/\./g, '%2E');
 }
 
 function normalizeSnapshot(snapshot) {
@@ -39,70 +37,49 @@ function normalizeSnapshot(snapshot) {
 }
 
 export function subscribeToLeaderboard(onData, onError) {
-  // Only fetch the highest 200 scores. The listener remains realtime.
-  const ref = database
-    .ref('leaderboard')
-    .orderByChild('meltDamage')
-    .limitToLast(LEADERBOARD_LIMIT);
+  const ref = database.ref('leaderboard').orderByChild('meltDamage').limitToLast(LEADERBOARD_LIMIT);
   const handler = (snapshot) => onData(normalizeSnapshot(snapshot));
   ref.on('value', handler, onError);
   return () => ref.off('value', handler);
 }
 
 export function subscribeToLiveRolls(onData, onError) {
-  const ref = database
-    .ref('liveRolls')
-    .orderByChild('timestamp')
-    .limitToLast(LIVE_ROLL_LIMIT);
+  const ref = database.ref('liveRolls').orderByChild('timestamp').limitToLast(LIVE_ROLL_LIMIT);
   const handler = (snapshot) => onData(normalizeSnapshot(snapshot));
   ref.on('value', handler, onError);
   return () => ref.off('value', handler);
 }
 
 export async function saveRoll(entry) {
-  const userId = getUserIdFromName(entry.playerName);
-  if (!userId) throw new Error('A valid player name is required.');
+  const user = getCurrentUser();
+  if (!user) throw new Error('You must be signed in.');
+  await user.reload();
+  if (!user.emailVerified) throw new Error('Please verify your email first.');
+
+  const userId = user.uid;
+  const playerName = String(user.displayName || '').trim();
+  if (!playerName) throw new Error('Your account has no display name.');
 
   const userRef = database.ref(`leaderboard/${userId}`);
-  const submittedEntry = {
-    ...entry,
-    id: userId,
-    userId,
-  };
+  const submittedEntry = { ...entry, id: userId, userId, playerName };
 
-  // Transaction guarantees that concurrent rolls from the same username cannot
-  // overwrite a better score. The stored leaderboard record changes only when
-  // the new Melt Damage is strictly higher. Equal scores keep the existing best.
   const transactionResult = await userRef.transaction((current) => {
     if (!current) return submittedEntry;
-
     const oldScore = Number(current.meltDamage) || 0;
     const newScore = Number(entry.meltDamage) || 0;
-
-    if (newScore <= oldScore) return;
-    return submittedEntry;
+    return newScore > oldScore ? submittedEntry : undefined;
   });
 
   const currentEntry = transactionResult.snapshot.val() || null;
-  const saved = transactionResult.committed;
-
-  // Every actual roll can still appear in the observer feed, even when it does
-  // not beat the player's leaderboard high score.
   const liveKey = database.ref('liveRolls').push().key;
   await database.ref(`liveRolls/${liveKey}`).set({
-    id: liveKey,
-    userId,
-    playerName: entry.playerName,
+    id: liveKey, userId, playerName,
     timestamp: entry.timestamp,
     meltDamage: entry.meltDamage,
     rarity: entry.rarity,
   });
 
-  return {
-    saved,
-    userId,
-    leaderboardEntry: currentEntry,
-  };
+  return { saved: transactionResult.committed, userId, leaderboardEntry: currentEntry };
 }
 
 export function getDatabase() {
