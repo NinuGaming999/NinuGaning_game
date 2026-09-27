@@ -1,7 +1,6 @@
 import { useEffect,useState,useCallback } from 'react';
 import { CARDS,ELEMENT_INFO,RARITY_INFO } from './data/cards';
-import { openElementalsPack } from './utils/cardService';
-import { subscribeToArcadePoints,subscribeToCollection,openElementalsPack } from './utils/cardService';
+import { subscribeToArcadePoints, subscribeToCollection, openElementalsPack } from './utils/cardService';
 import { CardFace } from './components/CardFace';
 import { PlaceholderArt } from './components/PlaceholderArt';
 import { ElementIcon } from './components/ElementIcon';
