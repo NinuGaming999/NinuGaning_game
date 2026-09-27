@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  getUserIdFromName,
+  getCurrentUserId,
   saveRoll,
   subscribeToLeaderboard,
   subscribeToLiveRolls,
@@ -76,7 +76,7 @@ export function useLeaderboard() {
   }, []);
 
   const submitRoll = useCallback(async (entry) => {
-    const userId = getUserIdFromName(entry.playerName);
+    const userId = getCurrentUserId();
     const current = dataRef.current;
     const existing = current.leaderboard.find((item) => item.userId === userId);
 
