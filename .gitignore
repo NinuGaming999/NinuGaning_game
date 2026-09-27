@@ -3,3 +3,9 @@ dist
 .env
 .DS_Store
 *.local
+
+# Firebase / Google credentials
+*-firebase-adminsdk-*.json
+serviceAccount*.json
+functions/.runtimeconfig.json
+functions/node_modules
