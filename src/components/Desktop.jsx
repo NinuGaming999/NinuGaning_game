@@ -25,7 +25,7 @@ export default function Desktop({
 
       <div className="flex flex-1 min-h-0">
         <div className="w-[60%] flex flex-col items-center gap-5 p-8 overflow-y-auto">
-          <NameInput value={playerName} onChange={setPlayerName} disabled={rolling} />
+          <NameInput value={playerName} disabled={rolling} readOnly />
           {nameError && <div className="text-[#FF2E2E] text-sm -mt-3">{nameError}</div>}
           <ArtifactCard roll={roll} />
           <RollButton onRoll={onRoll} rolling={rolling} />
