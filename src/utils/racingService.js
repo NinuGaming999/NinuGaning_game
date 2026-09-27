@@ -3,6 +3,8 @@ import { getCurrentUser } from './authService';
 const db = window.firebase.database();
 const MAX_RACING_LEADERBOARD = 200;
 
+export function getCurrentUserId() { return getCurrentUser()?.uid || ''; }
+
 function requireUser() {
   const user = getCurrentUser();
   if (!user || !user.emailVerified) throw new Error('You must be signed in with a verified email.');
