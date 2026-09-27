@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getDatabase, getUserIdFromName } from '../utils/firebaseService';
+import { getDatabase, getCurrentUserId } from '../utils/firebaseService';
 
 function GameCard({ title, description, accent, badge, onClick }) {
   return (
@@ -14,18 +14,13 @@ function GameCard({ title, description, accent, badge, onClick }) {
   );
 }
 
-export default function GameHub({ playerName, setPlayerName, onOpenArtifact, onOpenRacing, onOpenCards }) {
+export default function GameHub({ playerName, userEmail, onOpenArtifact, onOpenRacing, onOpenCards, onSignOut }) {
   const [artifactBest, setArtifactBest] = useState(null);
   const [racingBest, setRacingBest] = useState(null);
 
   useEffect(() => {
-    const id = getUserIdFromName(playerName);
-    if (!id) {
-      setArtifactBest(null);
-      setRacingBest(null);
-      return undefined;
-    }
-
+    const id = getCurrentUserId();
+    if (!id) return undefined;
     let active = true;
     const db = getDatabase();
     Promise.all([
@@ -35,16 +30,9 @@ export default function GameHub({ playerName, setPlayerName, onOpenArtifact, onO
       if (!active) return;
       setArtifactBest(artifactSnap.val());
       setRacingBest(racingSnap.val());
-    }).catch(() => {
-      if (!active) return;
-      setArtifactBest(null);
-      setRacingBest(null);
-    });
-
+    }).catch(() => {});
     return () => { active = false; };
-  }, [playerName]);
-
-  const hasName = playerName.trim().length > 0;
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#121212] text-white">
@@ -53,43 +41,23 @@ export default function GameHub({ playerName, setPlayerName, onOpenArtifact, onO
           <div className="text-xs md:text-sm text-[#FF2E2E] font-black tracking-[0.28em]">NINU GAMING ARCADE</div>
           <h1 className="text-2xl md:text-4xl font-black tracking-tight">Choose Your Game</h1>
         </div>
-        <div className="hidden md:block text-right text-xs text-[#777]">ONE NAME • THREE GAMES</div>
+        <div className="flex items-center gap-3">
+          <div className="hidden md:block text-right text-xs text-[#777]">{userEmail}</div>
+          <button onClick={onSignOut} className="rounded-lg border border-white/15 px-3 py-2 text-xs font-bold text-white/70 hover:text-white">SIGN OUT</button>
+        </div>
       </header>
 
       <main className="max-w-6xl mx-auto p-5 md:p-8">
         <div className="rounded-2xl border border-[#333] bg-[#191919] p-5 mb-6">
-          <label className="block text-xs font-bold tracking-widest text-[#999] mb-2">PLAYER NAME</label>
-          <input
-            value={playerName}
-            onChange={(e) => setPlayerName(e.target.value.replace(/[\n\r]/g, '').slice(0, 32))}
-            placeholder="Enter your name"
-            className="w-full md:max-w-md bg-[#111] border border-[#444] focus:border-[#FF2E2E] outline-none rounded-lg px-4 py-3 text-white"
-          />
-          <p className="text-xs text-[#777] mt-2">The same name identifies you across all three games. Elementals card pulls are funded by points earned in the other two.</p>
+          <div className="text-xs font-bold tracking-widest text-[#999]">PLAYER ACCOUNT</div>
+          <div className="text-2xl font-black mt-1">{playerName}</div>
+          <p className="text-xs text-[#777] mt-2">Your Firebase account UID is the permanent identity shared by all three games.</p>
         </div>
 
         <div className="grid md:grid-cols-3 gap-5">
-          <GameCard
-            title="Artifact Roll Simulator"
-            description="Roll a full Arlecchino artifact set, chase insane Melt Damage and climb the artifact-only leaderboard."
-            badge="GAME 01 • RNG"
-            accent="text-[#FF2E2E]"
-            onClick={onOpenArtifact}
-          />
-          <GameCard
-            title="Neon Mountain Racer"
-            description="Race a 7km neon mountain circuit in full 3D - 3 laps against AI or live 1v1, with drifting, boost and a proper leaderboard."
-            badge="GAME 02 • RACING"
-            accent="text-[#43D17A]"
-            onClick={onOpenRacing}
-          />
-          <GameCard
-            title="Elementals"
-            description="Open 5-card elemental packs using Arcade Points earned in your other games, collect all 35 cards, and duel with reactions and card abilities."
-            badge="GAME 03 • NEW"
-            accent="text-[#19D3FF]"
-            onClick={onOpenCards}
-          />
+          <GameCard title="Artifact Roll Simulator" description="Roll a full Arlecchino artifact set, chase insane Melt Damage and climb the artifact-only leaderboard." badge="GAME 01 • RNG" accent="text-[#FF2E2E]" onClick={onOpenArtifact} />
+          <GameCard title="Neon Mountain Racer" description="Race a 7km neon mountain circuit in full 3D - 3 laps against AI or live 1v1, with drifting, boost and a proper leaderboard." badge="GAME 02 • RACING" accent="text-[#43D17A]" onClick={onOpenRacing} />
+          <GameCard title="Elementals" description="Open 5-card elemental packs using Arcade Points earned from your other games, collect all 35 cards, and duel." badge="GAME 03 • CARDS" accent="text-[#19D3FF]" onClick={onOpenCards} />
         </div>
 
         <section className="mt-6 grid md:grid-cols-3 gap-4">
@@ -102,8 +70,8 @@ export default function GameHub({ playerName, setPlayerName, onOpenArtifact, onO
             <div className="text-2xl font-black mt-1">{racingBest ? Number(racingBest.score || 0).toLocaleString() : '—'}</div>
           </div>
           <div className="rounded-xl border border-[#333] bg-[#191919] p-4">
-            <div className="text-xs text-[#777] font-bold tracking-widest">PLAYER</div>
-            <div className={`text-2xl font-black mt-1 truncate ${hasName ? 'text-white' : 'text-[#555]'}`}>{hasName ? playerName.trim() : 'Not set'}</div>
+            <div className="text-xs text-[#777] font-bold tracking-widest">ARCADE POINTS</div>
+            <div className="text-2xl font-black mt-1 text-[#ffb84f]">Earned in-game</div>
           </div>
         </section>
       </main>
