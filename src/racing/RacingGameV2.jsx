@@ -9,7 +9,7 @@ import { ChaseCamera } from './engine/Camera';
 import {
   createOrJoinDeterministicMatch,
   finishMatch,
-  getUserIdFromName,
+  getCurrentUserId,
   leaveQueue,
   publishPlayerState,
   queuePlayer,
@@ -62,7 +62,7 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
   const [matchId, setMatchId] = useState(null);
   const [touch] = useState(isTouchDevice);
 
-  const uid = useMemo(() => getUserIdFromName(name), [name]);
+  const uid = useMemo(() => getCurrentUserId(), []);
 
   useEffect(() => subscribeToRacingLeaderboard(setRows, () => {}), []);
 
@@ -195,7 +195,6 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
         score = distanceMeters;
       }
       saveRacingScore({
-        playerName: name.trim(),
         score,
         distance: distanceMeters,
         nearMisses: rs.near,
@@ -375,7 +374,7 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
     setMode('multi');
     setPhase('queue');
     setStatus('Searching for a racer...');
-    try { await queuePlayer(uid, name.trim()); } catch { setStatus('Queue unavailable.'); }
+    try { await queuePlayer(); } catch { setStatus('Queue unavailable.'); }
   }, [name, uid]);
 
   useEffect(() => {
@@ -462,9 +461,8 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
           <p className="text-white/60 text-sm">7 KM mountain circuit • 3 laps • AI or 1v1</p>
           <input
             value={name}
-            onChange={(e) => setName(e.target.value.slice(0, 16))}
-            placeholder="Your name"
-            className="bg-white/10 border border-white/30 rounded px-4 py-2 text-center w-64"
+            readOnly
+            className="bg-white/10 border border-white/30 rounded px-4 py-2 text-center w-64 opacity-80"
           />
           {status && <div className="text-[#ff914d] text-sm">{status}</div>}
           <button onClick={single} className="w-64 py-3 rounded-lg bg-[#19d3ff] text-black font-bold">SINGLE PLAYER</button>
