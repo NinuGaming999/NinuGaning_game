@@ -14,7 +14,7 @@ function GameCard({ title, description, accent, badge, onClick }) {
   );
 }
 
-export default function GameHub({ playerName, setPlayerName, onOpenArtifact, onOpenRacing }) {
+export default function GameHub({ playerName, setPlayerName, onOpenArtifact, onOpenRacing, onOpenCards }) {
   const [artifactBest, setArtifactBest] = useState(null);
   const [racingBest, setRacingBest] = useState(null);
 
@@ -53,7 +53,7 @@ export default function GameHub({ playerName, setPlayerName, onOpenArtifact, onO
           <div className="text-xs md:text-sm text-[#FF2E2E] font-black tracking-[0.28em]">NINU GAMING ARCADE</div>
           <h1 className="text-2xl md:text-4xl font-black tracking-tight">Choose Your Game</h1>
         </div>
-        <div className="hidden md:block text-right text-xs text-[#777]">ONE NAME • TWO GAMES</div>
+        <div className="hidden md:block text-right text-xs text-[#777]">ONE NAME • THREE GAMES</div>
       </header>
 
       <main className="max-w-6xl mx-auto p-5 md:p-8">
@@ -65,10 +65,10 @@ export default function GameHub({ playerName, setPlayerName, onOpenArtifact, onO
             placeholder="Enter your name"
             className="w-full md:max-w-md bg-[#111] border border-[#444] focus:border-[#FF2E2E] outline-none rounded-lg px-4 py-3 text-white"
           />
-          <p className="text-xs text-[#777] mt-2">The same name identifies you across both games. Each game keeps its own leaderboard.</p>
+          <p className="text-xs text-[#777] mt-2">The same name identifies you across all three games. Elementals card pulls are funded by points earned in the other two.</p>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-5">
+        <div className="grid md:grid-cols-3 gap-5">
           <GameCard
             title="Artifact Roll Simulator"
             description="Roll a full Arlecchino artifact set, chase insane Melt Damage and climb the artifact-only leaderboard."
@@ -82,6 +82,13 @@ export default function GameHub({ playerName, setPlayerName, onOpenArtifact, onO
             badge="GAME 02 • RACING"
             accent="text-[#43D17A]"
             onClick={onOpenRacing}
+          />
+          <GameCard
+            title="Elementals"
+            description="Open 5-card elemental packs using Arcade Points earned in your other games, collect all 35 cards, and duel with reactions and card abilities."
+            badge="GAME 03 • NEW"
+            accent="text-[#19D3FF]"
+            onClick={onOpenCards}
           />
         </div>
 
