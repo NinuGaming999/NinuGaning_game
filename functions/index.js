@@ -150,17 +150,24 @@ exports.openElementalsPack = onCall(
     await reserveRef.child("pityStreak").set(pity);
 
     const now = Date.now();
-    const updates = {};
-    for (const card of pulled) {
-      const ref = db.ref(`cardCollection/${uid}/${card.id}`);
-      const snap = await ref.once("value");
-      const current = snap.val() || {};
-      updates[`cardCollection/${uid}/${card.id}`] = {
-        count: (Number(current.count) || 0) + 1,
-        firstObtainedAt: Number(current.firstObtainedAt) || now,
-      };
+    const pulledCounts = {};
+    for (const card of pulled) pulledCounts[card.id] = (pulledCounts[card.id] || 0) + 1;
+    const collectionRef = db.ref(`cardCollection/${uid}`);
+    const collectionTx = await collectionRef.transaction((current) => {
+      const next = { ...(current || {}) };
+      for (const card of pulled) {
+        const old = next[card.id] || {};
+        const increment = pulledCounts[card.id];
+        next[card.id] = {
+          count: (Number(old.count) || 0) + increment,
+          firstObtainedAt: Number(old.firstObtainedAt) || now,
+        };
+      }
+      return next;
+    });
+    if (!collectionTx.committed) {
+      throw new HttpsError("aborted", "Could not save your card collection. Try again.");
     }
-    await db.ref().update(updates);
 
     return {
       cards: pulled.map((card) => ({
