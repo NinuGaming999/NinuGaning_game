@@ -1,4 +1,3 @@
-import { getAuth } from "firebase/auth";
 const FIREBASE_CONFIG = {
   apiKey: 'AIzaSyBMbVLUSuDwRsrZ91-XC-sl1jofX4Y4Jyk',
   authDomain: 'arlecchino-artifact-simulator.firebaseapp.com',
