@@ -13,6 +13,9 @@ import { getRarity } from './utils/rarityBadge';
 import { formatStatValue } from './utils/format';
 import { SLOT_ORDER } from './utils/artifactData';
 import MusicPlayer from './components/MusicPlayer';
+import { useAuth } from './hooks/useAuth';
+import { signOutUser } from './utils/authService';
+import { SignInScreen, VerifyEmailScreen, ChooseUsernameScreen } from './components/AuthScreen';
 
 const ROLL_BUTTON_LOCK_MS = 2000;
 const REVEAL_DELAY_MS = 300;
@@ -112,26 +115,51 @@ function ArtifactGame({ isMobile, playerName, setPlayerName, onBack }) {
   return isMobile ? <Mobile {...sharedProps} /> : <Desktop {...sharedProps} />;
 }
 
+function FullScreenMessage({ children }) {
+  return <div className="fixed inset-0 bg-black text-white flex items-center justify-center font-bold">{children}</div>;
+}
+
 export default function App() {
   const isMobile = useResponsive();
+  const auth = useAuth();
   const [screen, setScreen] = useState('hub');
-  const [playerName, setPlayerName] = useState('');
 
-  return (
-    <>
+  const handleSignOut = useCallback(async () => {
+    setScreen('hub');
+    await signOutUser();
+  }, []);
+
+  let content;
+  if (auth.loading) {
+    content = <FullScreenMessage>Loading...</FullScreenMessage>;
+  } else if (!auth.user) {
+    content = <SignInScreen />;
+  } else if (!auth.verified) {
+    content = <VerifyEmailScreen user={auth.user} onRefresh={auth.refresh} />;
+  } else if (!auth.username) {
+    content = <ChooseUsernameScreen user={auth.user} onDone={auth.refresh} />;
+  } else {
+    content = (
       <AppScreen
         screen={screen}
         isMobile={isMobile}
-        playerName={playerName}
-        setPlayerName={setPlayerName}
+        playerName={auth.username}
+        setPlayerName={() => {}}
         setScreen={setScreen}
+        onSignOut={handleSignOut}
       />
+    );
+  }
+
+  return (
+    <>
+      {content}
       <MusicPlayer />
     </>
   );
 }
 
-function AppScreen({ screen, isMobile, playerName, setPlayerName, setScreen }) {
+function AppScreen({ screen, isMobile, playerName, setPlayerName, setScreen, onSignOut }) {
   if (screen === 'artifact') {
     return (
       <ArtifactGame
@@ -165,7 +193,7 @@ function AppScreen({ screen, isMobile, playerName, setPlayerName, setScreen }) {
   return (
     <GameHub
       playerName={playerName}
-      setPlayerName={setPlayerName}
+      onSignOut={onSignOut}
       onOpenArtifact={() => setScreen('artifact')}
       onOpenRacing={() => setScreen('racing')}
       onOpenCards={() => setScreen('cards')}
