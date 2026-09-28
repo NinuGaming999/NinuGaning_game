@@ -147,8 +147,12 @@ function simulateBattle(player, enemy) {
 }
 
 function CardTile({ card, count = 0, onClick, compact = false }) {
+  const [imageFailed, setImageFailed] = useState(false);
   const rarity = RARITY_INFO[card.rarity];
   const el = ELEMENT_INFO[card.element];
+  const artSrc = `/cardgame/cards/${card.id}.png`;
+  const artSize = compact ? 'h-28' : 'h-40';
+
   return (
     <button
       type="button"
@@ -157,10 +161,20 @@ function CardTile({ card, count = 0, onClick, compact = false }) {
       style={{ borderColor: `${rarity.color}66` }}
     >
       <div
-        className={`relative rounded-xl flex items-center justify-center overflow-hidden ${compact ? 'h-28' : 'h-40'}`}
+        className={`relative rounded-xl flex items-center justify-center overflow-hidden ${artSize}`}
         style={{ background: `radial-gradient(circle at 30% 20%, ${el.color}66, transparent 45%), linear-gradient(145deg, #121822, ${rarity.color}22)` }}
       >
-        <div className="text-5xl">{el.icon}</div>
+        {!imageFailed ? (
+          <img
+            src={artSrc}
+            alt=""
+            className="w-full h-full object-contain p-2"
+            loading="lazy"
+            onError={() => setImageFailed(true)}
+          />
+        ) : (
+          <div className="text-5xl" aria-hidden="true">{el.icon}</div>
+        )}
         <div className="absolute left-2 top-2 text-[9px] font-black uppercase tracking-widest" style={{ color: rarity.color }}>{rarity.label}</div>
         {count > 0 && <div className="absolute right-2 bottom-2 text-[10px] font-black bg-black/60 rounded-full px-2 py-1">x{count}</div>}
       </div>
