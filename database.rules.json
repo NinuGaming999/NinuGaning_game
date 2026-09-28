@@ -5,7 +5,7 @@
     "usernames": {
       "$key": {
         ".read": true,
-        ".write": "auth != null && auth.token.source_email_verified == true && auth.token.source_project_id == 'test-for-login-macanism' && !data.exists() && newData.val() == auth.uid && !root.child('users').child(auth.uid).child('usernameKey').exists()",
+        ".write": "auth != null && auth.token.email_verified == true && !data.exists() && newData.val() == auth.uid && !root.child('users').child(auth.uid).child('usernameKey').exists()",
         ".validate": "newData.isString() && newData.val() == auth.uid && $key.length >= 3"
       }
     },
