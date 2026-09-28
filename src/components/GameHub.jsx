@@ -14,7 +14,7 @@ function GameCard({ title, description, accent, badge, onClick }) {
   );
 }
 
-export default function GameHub({ playerName, setPlayerName, onOpenArtifact, onOpenRacing }) {
+export default function GameHub({ playerName, setPlayerName, onOpenArtifact, onOpenRacing, onOpenCards }) {
   const [artifactBest, setArtifactBest] = useState(null);
   const [racingBest, setRacingBest] = useState(null);
 
@@ -68,13 +68,20 @@ export default function GameHub({ playerName, setPlayerName, onOpenArtifact, onO
           <p className="text-xs text-[#777] mt-2">The same name identifies you across both games. Each game keeps its own leaderboard.</p>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-5">
+        <div className="grid md:grid-cols-3 gap-5">
           <GameCard
             title="Artifact Roll Simulator"
             description="Roll a full Arlecchino artifact set, chase insane Melt Damage and climb the artifact-only leaderboard."
             badge="GAME 01 • RNG"
             accent="text-[#FF2E2E]"
             onClick={onOpenArtifact}
+          />
+          <GameCard
+            title="Elementals"
+            description="Open 5-card elemental packs with points earned in the other games, collect 35 cards, and duel random opponents."
+            badge="GAME 03 • CARDS"
+            accent="text-[#19D3FF]"
+            onClick={onOpenCards}
           />
           <GameCard
             title="Neon Mountain Racer"
