@@ -24,14 +24,14 @@ const ERROR_TEXT = {
   'auth/network-request-failed': 'Network problem. Check your connection and try again.',
   'auth/popup-closed-by-user': 'Sign-in window was closed before finishing.',
   'auth/cancelled-popup-request': 'Sign-in was cancelled.',
-  'auth/account-exists-with-different-credential': 'This email is already registered with another sign-in method.',
+  'auth/account-exists-with-different-credential': 'An account already exists with this email using a password. Please sign in with your email and password below.',
   'auth/unauthorized-domain': 'This website address is not authorized in Firebase (Authentication → Settings → Authorized domains).',
   'auth/operation-not-allowed': 'This sign-in method is not enabled in Firebase (Authentication → Sign-in method).',
 };
 
 export function friendlyError(error) {
   if (error?.userMessage) return error.userMessage;
-  return ERROR_TEXT[error?.code] || 'Something went wrong. Please try again.';
+  return ERROR_TEXT[error?.code] || error?.message || 'Something went wrong. Please try again.';
 }
 
 function userError(message) {
@@ -50,6 +50,7 @@ export async function signInWithGoogle() {
   try {
     return await auth.signInWithPopup(googleProvider);
   } catch (error) {
+    console.error('Google signInWithPopup error:', error);
     // Some mobile browsers block popups; fall back to a full-page redirect.
     if (error?.code === 'auth/popup-blocked' || error?.code === 'auth/operation-not-supported-in-this-environment') {
       return auth.signInWithRedirect(googleProvider);
@@ -58,8 +59,14 @@ export async function signInWithGoogle() {
   }
 }
 
-export function completeRedirectSignIn() {
-  return auth.getRedirectResult().catch(() => null);
+export async function completeRedirectSignIn() {
+  try {
+    const cred = await auth.getRedirectResult();
+    return cred?.user || null;
+  } catch (error) {
+    console.error('Redirect sign-in error:', error);
+    return null;
+  }
 }
 
 export async function signUpWithEmail(email, password) {

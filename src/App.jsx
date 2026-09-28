@@ -133,7 +133,7 @@ export default function App() {
   if (auth.loading) {
     content = <FullScreenMessage>Loading...</FullScreenMessage>;
   } else if (!auth.user) {
-    content = <SignInScreen />;
+    content = <SignInScreen onAuthSuccess={auth.refresh} />;
   } else if (!auth.verified) {
     content = <VerifyEmailScreen user={auth.user} onRefresh={auth.refresh} />;
   } else if (!auth.username) {

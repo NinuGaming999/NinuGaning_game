@@ -51,7 +51,7 @@ function GoogleIcon() {
   );
 }
 
-export function SignInScreen() {
+export function SignInScreen({ onAuthSuccess }) {
   const [mode, setMode] = useState('signin'); // signin | signup | reset
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -64,8 +64,12 @@ export function SignInScreen() {
     setError('');
     setInfo('');
     try {
-      await fn();
+      const res = await fn();
+      if (res?.user || res) {
+        await onAuthSuccess?.();
+      }
     } catch (e) {
+      console.error('Auth error:', e);
       setError(friendlyError(e));
     } finally {
       setBusy(false);
@@ -75,8 +79,8 @@ export function SignInScreen() {
   const submit = (e) => {
     e.preventDefault();
     run(async () => {
-      if (mode === 'signin') await signInWithEmail(email, password);
-      else if (mode === 'signup') await signUpWithEmail(email, password);
+      if (mode === 'signin') return await signInWithEmail(email, password);
+      else if (mode === 'signup') return await signUpWithEmail(email, password);
       else {
         await sendResetEmail(email);
         setInfo('If that email has an account, a reset link is on its way.');
@@ -93,6 +97,7 @@ export function SignInScreen() {
           <button type="button" disabled={busy} onClick={() => run(signInWithGoogle)} className={`${ghostBtn} flex items-center justify-center gap-3`}>
             <GoogleIcon /> Continue with Google
           </button>
+          <Message error={error} info={info} />
           <div className="flex items-center gap-3 text-[#666] text-xs">
             <div className="h-px flex-1 bg-[#333]" /> OR <div className="h-px flex-1 bg-[#333]" />
           </div>
@@ -113,7 +118,7 @@ export function SignInScreen() {
             className={inputClass}
           />
         )}
-        <Message error={error} info={info} />
+        {mode === 'reset' && <Message error={error} info={info} />}
         <button type="submit" disabled={busy} className={primaryBtn}>
           {busy ? 'PLEASE WAIT…' : mode === 'signup' ? 'CREATE ACCOUNT' : mode === 'reset' ? 'SEND RESET LINK' : 'SIGN IN'}
         </button>

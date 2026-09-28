@@ -27,8 +27,19 @@ export function useAuth() {
   }, []);
 
   useEffect(() => {
-    completeRedirectSignIn();
-    return onAuthChange((user) => { load(user); });
+    let active = true;
+    completeRedirectSignIn().then((user) => {
+      if (active && user) {
+        load(user);
+      }
+    });
+    const unsub = onAuthChange((user) => {
+      if (active) load(user);
+    });
+    return () => {
+      active = false;
+      unsub();
+    };
   }, [load]);
 
   const refresh = useCallback(async () => {
@@ -36,5 +47,5 @@ export function useAuth() {
     await load(user);
   }, [load]);
 
-  return { ...state, refresh };
+  return { ...state, refresh, load };
 }
