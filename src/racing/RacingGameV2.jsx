@@ -462,7 +462,8 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
           <p className="text-white/60 text-sm">7 KM mountain circuit • 3 laps • AI or 1v1</p>
           <input
             value={name}
-            onChange={(e) => setName(e.target.value.slice(0, 16))}
+            readOnly
+            title="Your username comes from your account"
             placeholder="Your name"
             className="bg-white/10 border border-white/30 rounded px-4 py-2 text-center w-64"
           />
