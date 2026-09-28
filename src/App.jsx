@@ -134,22 +134,6 @@ export default function App() {
     content = <FullScreenMessage>Loading...</FullScreenMessage>;
   } else if (!auth.user) {
     content = <SignInScreen />;
-  } else if (auth.error) {
-    content = (
-      <div className="fixed inset-0 bg-black text-white flex items-center justify-center p-6">
-        <div className="max-w-xl text-center">
-          <div className="text-[#FF2E2E] font-black tracking-widest text-xs mb-3">AUTHENTICATION BRIDGE ERROR</div>
-          <div className="text-lg font-bold">{auth.error}</div>
-          <button
-            type="button"
-            onClick={handleSignOut}
-            className="mt-5 border border-[#555] hover:border-[#FF2E2E] rounded-lg px-4 py-2 font-bold"
-          >
-            SIGN OUT
-          </button>
-        </div>
-      </div>
-    );
   } else if (!auth.verified) {
     content = <VerifyEmailScreen user={auth.user} onRefresh={auth.refresh} />;
   } else if (!auth.username) {
