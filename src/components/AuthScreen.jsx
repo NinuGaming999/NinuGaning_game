@@ -8,7 +8,6 @@ import {
   resendVerification,
   sendResetEmail,
   signInWithEmail,
-  signInWithGoogle,
   signOutUser,
   signUpWithEmail,
   validateUsername,
@@ -38,17 +37,6 @@ function Message({ error, info }) {
   if (error) return <div className="text-[#FF6B6B] text-sm">{error}</div>;
   if (info) return <div className="text-[#43D17A] text-sm">{info}</div>;
   return null;
-}
-
-function GoogleIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
-      <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.9 2.4 30.4 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z" />
-      <path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.6 5.9c4.4-4.1 7-10.1 7-17.6z" />
-      <path fill="#FBBC05" d="M10.5 28.7A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.9-4.7l-7.9-6.1A24 24 0 0 0 0 24c0 3.9.9 7.5 2.6 10.8l7.9-6.1z" />
-      <path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.6-5.9c-2.1 1.4-4.8 2.3-8.3 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z" />
-    </svg>
-  );
 }
 
 export function SignInScreen({ onAuthSuccess }) {
@@ -92,18 +80,6 @@ export function SignInScreen({ onAuthSuccess }) {
 
   return (
     <Shell title={title} subtitle="Your account keeps your scores and cards safe. Nobody else can post under your name.">
-      {mode !== 'reset' && (
-        <>
-          <button type="button" disabled={busy} onClick={() => run(signInWithGoogle)} className={`${ghostBtn} flex items-center justify-center gap-3`}>
-            <GoogleIcon /> Continue with Google
-          </button>
-          <Message error={error} info={info} />
-          <div className="flex items-center gap-3 text-[#666] text-xs">
-            <div className="h-px flex-1 bg-[#333]" /> OR <div className="h-px flex-1 bg-[#333]" />
-          </div>
-        </>
-      )}
-
       <form onSubmit={submit} className="space-y-3">
         <input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className={inputClass} />
         {mode !== 'reset' && (
@@ -118,7 +94,7 @@ export function SignInScreen({ onAuthSuccess }) {
             className={inputClass}
           />
         )}
-        {mode === 'reset' && <Message error={error} info={info} />}
+        <Message error={error} info={info} />
         <button type="submit" disabled={busy} className={primaryBtn}>
           {busy ? 'PLEASE WAIT…' : mode === 'signup' ? 'CREATE ACCOUNT' : mode === 'reset' ? 'SEND RESET LINK' : 'SIGN IN'}
         </button>
