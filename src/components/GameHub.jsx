@@ -14,7 +14,7 @@ function GameCard({ title, description, accent, badge, onClick }) {
   );
 }
 
-export default function GameHub({ playerName, setPlayerName, onOpenArtifact, onOpenRacing, onOpenCards }) {
+export default function GameHub({ playerName, onSignOut, onOpenArtifact, onOpenRacing, onOpenCards }) {
   const [artifactBest, setArtifactBest] = useState(null);
   const [racingBest, setRacingBest] = useState(null);
 
@@ -58,14 +58,18 @@ export default function GameHub({ playerName, setPlayerName, onOpenArtifact, onO
 
       <main className="max-w-6xl mx-auto p-5 md:p-8">
         <div className="rounded-2xl border border-[#333] bg-[#191919] p-5 mb-6">
-          <label className="block text-xs font-bold tracking-widest text-[#999] mb-2">PLAYER NAME</label>
-          <input
-            value={playerName}
-            onChange={(e) => setPlayerName(e.target.value.replace(/[\n\r]/g, '').slice(0, 32))}
-            placeholder="Enter your name"
-            className="w-full md:max-w-md bg-[#111] border border-[#444] focus:border-[#FF2E2E] outline-none rounded-lg px-4 py-3 text-white"
-          />
-          <p className="text-xs text-[#777] mt-2">The same name identifies you across both games. Each game keeps its own leaderboard.</p>
+          <label className="block text-xs font-bold tracking-widest text-[#999] mb-2">SIGNED IN AS</label>
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-xl font-black truncate">{playerName}</div>
+            <button
+              type="button"
+              onClick={onSignOut}
+              className="shrink-0 text-sm text-white border border-[#555] rounded-lg px-3 py-1.5 hover:border-[#FF2E2E] transition"
+            >
+              Sign out
+            </button>
+          </div>
+          <p className="text-xs text-[#777] mt-2">Your account name is used across all games. Each game keeps its own leaderboard.</p>
         </div>
 
         <div className="grid md:grid-cols-3 gap-5">
