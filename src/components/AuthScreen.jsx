@@ -147,6 +147,14 @@ export function VerifyEmailScreen({ user, onRefresh }) {
 
   return (
     <Shell title="Verify your email" subtitle={`We sent a link to ${user.email}. Open it, then come back here.`}>
+      <div className="rounded-lg border border-[#4a4a4a] bg-[#222] px-4 py-3 text-sm text-[#ddd]">
+        <div className="font-black text-white">⚠️ Check your Spam / Junk folder</div>
+        <p className="mt-1 text-[#aaa]">
+          Your verification email may be filtered into <span className="text-white font-bold">Spam, Junk, or Promotions</span>.
+          If you do not see it in your Inbox, check those folders and search for <span className="text-white font-bold">“verification”</span> or <span className="text-white font-bold">“Firebase”</span>.
+        </p>
+        <p className="mt-2 text-[#aaa]">Still nothing? Wait a few minutes, then click <span className="text-white font-bold">Resend email</span> below.</p>
+      </div>
       <Message error={error} info={info} />
       <button type="button" disabled={busy} onClick={check} className={primaryBtn}>{busy ? 'CHECKING…' : "I'VE VERIFIED MY EMAIL"}</button>
       <button type="button" onClick={resend} className={ghostBtn}>Resend email</button>
