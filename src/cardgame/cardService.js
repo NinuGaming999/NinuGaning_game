@@ -1,4 +1,4 @@
-import { getDatabase, getUserIdFromName } from '../../utils/firebaseService';
+import { getDatabase, getUserIdFromName } from '../utils/firebaseService';
 
 const db = getDatabase();
 
