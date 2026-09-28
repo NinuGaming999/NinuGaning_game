@@ -2,11 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   completeRedirectSignIn,
   exchangeForGameSession,
-  gameAuth,
   onAuthChange,
   readUsername,
   refreshCurrentUser,
 } from '../utils/authService';
+import { gameAuth } from '../utils/firebaseService';
 
 const SIGNED_OUT = {
   loading: false,
