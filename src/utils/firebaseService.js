@@ -1,5 +1,5 @@
 const FIREBASE_CONFIG = {
-  apiKey: 'AIzaSyBMbVLUSuDwRsrZ91-XC-sl1jofX4Y4Jyk',
+  apiKey: 'AIzaSyBMbVLUSuDwRsrZ91-XC-sl1jofX4YJ4yk',
   authDomain: 'arlecchino-artifact-simulator.firebaseapp.com',
   databaseURL: 'https://arlecchino-artifact-simulator-default-rtdb.asia-southeast1.firebasedatabase.app',
   projectId: 'arlecchino-artifact-simulator',
