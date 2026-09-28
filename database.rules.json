@@ -1,46 +1,70 @@
 {
   "rules": {
-    ".read": true,
+    ".read": false,
     ".write": false,
+    "usernames": {
+      "$key": {
+        ".read": true,
+        ".write": "auth != null && auth.token.email_verified == true && !data.exists() && newData.val() == auth.uid && !root.child('users').child(auth.uid).child('usernameKey').exists()",
+        ".validate": "newData.isString() && newData.val() == auth.uid && $key.length >= 3"
+      }
+    },
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        "usernameKey": {
+          ".write": "auth != null && auth.uid == $uid && !data.exists() && root.child('usernames').child(newData.val()).val() == auth.uid",
+          ".validate": "newData.isString() && newData.val().length >= 3 && newData.val().length <= 200"
+        },
+        "username": {
+          ".write": "auth != null && auth.uid == $uid && !data.exists()",
+          ".validate": "newData.isString() && newData.val().length >= 3 && newData.val().length <= 16"
+        }
+      }
+    },
     "leaderboard": {
+      ".read": true,
       ".indexOn": [
         "meltDamage"
       ],
       "$userId": {
-        ".write": "newData.exists() && newData.child('id').isString() && newData.child('id').val() == $userId && (!data.exists() || (newData.child('meltDamage').isNumber() && data.child('meltDamage').isNumber() && newData.child('meltDamage').val() > data.child('meltDamage').val()))",
-        ".validate": "newData.hasChildren(['id','userId','playerName','meltDamage','physicalDamage','timestamp','rarity','artifacts']) && newData.child('id').isString() && newData.child('id').val() == $userId && newData.child('userId').isString() && newData.child('userId').val() == $userId && newData.child('playerName').isString() && newData.child('playerName').val().length >= 1 && newData.child('playerName').val().length <= 32 && newData.child('meltDamage').isNumber() && newData.child('meltDamage').val() >= 0 && newData.child('meltDamage').val() <= 1000000 && newData.child('physicalDamage').isNumber() && newData.child('physicalDamage').val() >= 0 && newData.child('physicalDamage').val() <= 1000000 && newData.child('timestamp').isNumber() && newData.child('timestamp').val() >= 0 && newData.child('rarity').isString() && newData.child('artifacts').hasChildren(['totalATK','critRate','critDmg','pyroDmg','pieces'])"
+        ".write": "auth != null && root.child('usernames').child($userId).val() == auth.uid && (newData.exists() && newData.child('id').isString() && newData.child('id').val() == $userId && (!data.exists() || (newData.child('meltDamage').isNumber() && data.child('meltDamage').isNumber() && newData.child('meltDamage').val() > data.child('meltDamage').val())))",
+        ".validate": "newData.hasChildren(['id','userId','playerName','meltDamage','physicalDamage','timestamp','rarity','artifacts']) && newData.child('id').isString() && newData.child('id').val() == $userId && newData.child('userId').isString() && newData.child('userId').val() == $userId && newData.child('playerName').isString() && newData.child('playerName').val().length >= 1 && newData.child('playerName').val().length <= 32 && newData.child('meltDamage').isNumber() && newData.child('meltDamage').val() >= 0 && newData.child('meltDamage').val() <= 1000000 && newData.child('physicalDamage').isNumber() && newData.child('physicalDamage').val() >= 0 && newData.child('physicalDamage').val() <= 1000000 && newData.child('timestamp').isNumber() && newData.child('timestamp').val() >= 0 && newData.child('rarity').isString() && newData.child('artifacts').hasChildren(['totalATK','critRate','critDmg','pyroDmg','pieces']) && newData.child('playerName').val() == root.child('users').child(auth.uid).child('username').val()"
       }
     },
     "liveRolls": {
+      ".read": true,
       ".indexOn": [
         "timestamp"
       ],
       "$rollId": {
-        ".write": "newData.exists() && !data.exists()",
-        ".validate": "newData.hasChildren(['id','userId','playerName','timestamp','meltDamage','rarity']) && newData.child('id').isString() && newData.child('id').val() == $rollId && newData.child('userId').isString() && newData.child('userId').val().length >= 1 && newData.child('playerName').isString() && newData.child('playerName').val().length >= 1 && newData.child('playerName').val().length <= 32 && newData.child('timestamp').isNumber() && newData.child('timestamp').val() >= 0 && newData.child('meltDamage').isNumber() && newData.child('meltDamage').val() >= 0 && newData.child('meltDamage').val() <= 1000000 && newData.child('rarity').isString()"
+        ".write": "auth != null && root.child('usernames').child(newData.child('userId').val()).val() == auth.uid && (newData.exists() && !data.exists())",
+        ".validate": "newData.hasChildren(['id','userId','playerName','timestamp','meltDamage','rarity']) && newData.child('id').isString() && newData.child('id').val() == $rollId && newData.child('userId').isString() && newData.child('userId').val().length >= 1 && newData.child('playerName').isString() && newData.child('playerName').val().length >= 1 && newData.child('playerName').val().length <= 32 && newData.child('timestamp').isNumber() && newData.child('timestamp').val() >= 0 && newData.child('meltDamage').isNumber() && newData.child('meltDamage').val() >= 0 && newData.child('meltDamage').val() <= 1000000 && newData.child('rarity').isString() && newData.child('playerName').val() == root.child('users').child(auth.uid).child('username').val()"
       }
     },
     "racingLeaderboard": {
+      ".read": true,
       ".indexOn": [
         "score"
       ],
       "$userId": {
-        ".write": "newData.exists() && newData.child('id').isString() && newData.child('id').val() == $userId && (!data.exists() || (newData.child('score').isNumber() && data.child('score').isNumber() && newData.child('score').val() > data.child('score').val()))",
-        ".validate": "newData.hasChildren(['id','userId','playerName','score','distance','nearMisses','overtakes','collisions','timestamp']) && newData.child('id').isString() && newData.child('id').val() == $userId && newData.child('userId').isString() && newData.child('userId').val() == $userId && newData.child('playerName').isString() && newData.child('playerName').val().length >= 1 && newData.child('playerName').val().length <= 32 && newData.child('score').isNumber() && newData.child('score').val() >= 0 && newData.child('score').val() <= 100000000 && newData.child('distance').isNumber() && newData.child('distance').val() >= 0 && newData.child('distance').val() <= 10000000 && newData.child('nearMisses').isNumber() && newData.child('nearMisses').val() >= 0 && newData.child('overtakes').isNumber() && newData.child('overtakes').val() >= 0 && newData.child('collisions').isNumber() && newData.child('collisions').val() >= 0 && newData.child('timestamp').isNumber()"
+        ".write": "auth != null && root.child('usernames').child($userId).val() == auth.uid && (newData.exists() && newData.child('id').isString() && newData.child('id').val() == $userId && (!data.exists() || (newData.child('score').isNumber() && data.child('score').isNumber() && newData.child('score').val() > data.child('score').val())))",
+        ".validate": "newData.hasChildren(['id','userId','playerName','score','distance','nearMisses','overtakes','collisions','timestamp']) && newData.child('id').isString() && newData.child('id').val() == $userId && newData.child('userId').isString() && newData.child('userId').val() == $userId && newData.child('playerName').isString() && newData.child('playerName').val().length >= 1 && newData.child('playerName').val().length <= 32 && newData.child('score').isNumber() && newData.child('score').val() >= 0 && newData.child('score').val() <= 100000000 && newData.child('distance').isNumber() && newData.child('distance').val() >= 0 && newData.child('distance').val() <= 10000000 && newData.child('nearMisses').isNumber() && newData.child('nearMisses').val() >= 0 && newData.child('overtakes').isNumber() && newData.child('overtakes').val() >= 0 && newData.child('collisions').isNumber() && newData.child('collisions').val() >= 0 && newData.child('timestamp').isNumber() && newData.child('playerName').val() == root.child('users').child(auth.uid).child('username').val()"
       }
     },
     "racingQueue": {
+      ".read": true,
       ".indexOn": [
         "createdAt"
       ],
       "$userId": {
-        ".write": "newData.exists() ? (newData.child('userId').isString() && newData.child('userId').val() == $userId && newData.child('playerName').isString() && newData.child('playerName').val().length >= 1 && newData.child('playerName').val().length <= 32) : true"
+        ".write": "auth != null && root.child('usernames').child($userId).val() == auth.uid && (newData.exists() ? (newData.child('userId').isString() && newData.child('userId').val() == $userId && newData.child('playerName').isString() && newData.child('playerName').val().length >= 1 && newData.child('playerName').val().length <= 32 && newData.child('playerName').val() == root.child('users').child(auth.uid).child('username').val()) : true)"
       }
     },
     "racingMatches": {
       "$matchId": {
         ".read": true,
-        ".write": true,
+        ".write": "auth != null && root.child('users').child(auth.uid).child('usernameKey').exists() && ($matchId.beginsWith(root.child('users').child(auth.uid).child('usernameKey').val() + '__') || $matchId.endsWith('__' + root.child('users').child(auth.uid).child('usernameKey').val()))",
         "states": {
           "$userId": {
             ".validate": "newData.hasChildren(['userId','ready','distance','lane','speed','finished']) && newData.child('userId').val() == $userId && newData.child('distance').isNumber() && newData.child('distance').val() >= 0 && newData.child('distance').val() <= 10000000 && newData.child('lane').isNumber() && newData.child('lane').val() >= -2 && newData.child('lane').val() <= 2 && newData.child('speed').isNumber() && newData.child('speed').val() >= 0 && newData.child('speed').val() <= 2000"
@@ -50,16 +74,18 @@
     },
     "cardCollection": {
       "$userId": {
+        ".read": "auth != null && root.child('usernames').child($userId).val() == auth.uid",
         "$cardId": {
-          ".write": "newData.exists() && newData.child('count').isNumber() && newData.child('count').val() >= 1",
+          ".write": "auth != null && root.child('usernames').child($userId).val() == auth.uid && (newData.exists() && newData.child('count').isNumber() && newData.child('count').val() >= 1)",
           ".validate": "newData.hasChildren(['count','firstObtainedAt']) && newData.child('count').isNumber() && newData.child('count').val() >= 1 && newData.child('count').val() <= 100000 && newData.child('firstObtainedAt').isNumber() && newData.child('firstObtainedAt').val() >= 0"
         }
       }
     },
     "cardCurrency": {
       "$userId": {
+        ".read": "auth != null && root.child('usernames').child($userId).val() == auth.uid",
         "spent": {
-          ".write": "newData.isNumber() && newData.val() >= 0",
+          ".write": "auth != null && root.child('usernames').child($userId).val() == auth.uid && (newData.isNumber() && newData.val() >= 0) && (!data.exists() || newData.val() >= data.val())",
           ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100000000"
         }
       }
