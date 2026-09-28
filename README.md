@@ -61,6 +61,26 @@ Phone:
 
 The racing game intentionally keeps the gameplay canvas fullscreen and puts the HUD around the edges so it remains readable on stream.
 
+## Accounts and login
+
+The whole arcade sits behind Firebase Authentication (free tier): **Google sign-in** and **email + password** (email must be verified).
+
+After the first sign-in each player claims a permanent **username** (3-16 characters). The first account to claim a name owns it, and the database rules only let that account write the leaderboard, queue, live-roll and card records stored under that name.
+
+```text
+usernames/{nameKey}      -> uid of the owner (write once, publicly readable per key)
+users/{uid}/username     -> display name (private to the owner)
+users/{uid}/usernameKey  -> the nameKey this account owns
+```
+
+Setup checklist (Firebase Console):
+
+1. Authentication -> Sign-in method: enable **Google** and **Email/Password**.
+2. Authentication -> Settings -> Authorized domains: add your live domain (for example your `*.vercel.app` URL).
+3. Realtime Database -> Rules: publish `database.rules.json`.
+
+Scores are still calculated in the browser, so this stops impersonation and tampering with other players' records, but it is not full anti-cheat.
+
 ## Shared Firebase structure
 
 ```text
@@ -78,7 +98,7 @@ The browser uses the Firebase web SDK already loaded by `index.html`; no Firebas
 
 `database.rules.json` now contains rules for both games. After pulling/deploying this version, publish the latest rules in **Firebase Console → Realtime Database → Rules**.
 
-The racing leaderboard uses the same one-user/highest-score pattern as the artifact leaderboard. Match/queue paths are intentionally public for this account-free prototype; they are not intended to be a cryptographically secure anti-cheat system.
+The racing leaderboard uses the same one-user/highest-score pattern as the artifact leaderboard. Match/queue paths now require a signed-in participant, but they are still client-authoritative and not a cryptographically secure anti-cheat system.
 
 ## Development
 
