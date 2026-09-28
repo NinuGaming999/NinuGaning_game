@@ -17,7 +17,12 @@ const app = window.firebase.apps.length
   ? window.firebase.app()
   : window.firebase.initializeApp(FIREBASE_CONFIG);
 
+if (!window.firebase.auth) {
+  throw new Error('Firebase Auth SDK was not loaded.');
+}
+
 const database = window.firebase.database(app);
+export const auth = window.firebase.auth(app);
 const LEADERBOARD_LIMIT = 200;
 const LIVE_ROLL_LIMIT = 30;
 
