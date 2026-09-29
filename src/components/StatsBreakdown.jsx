@@ -12,11 +12,11 @@ export default function StatsBreakdown({ roll }) {
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-[400px]">
+    <div className="artifact-stats">
       {stats.map((s) => (
-        <div key={s.label} className="bg-[#2D2D2D] border border-[#FF2E2E] rounded-lg py-4 px-2 text-center">
-          <div className="text-[#FFD700] text-xl md:text-2xl font-bold">{s.value}</div>
-          <div className="text-[#CCCCCC] text-[11px] md:text-xs mt-1">{s.label}</div>
+        <div key={s.label} className="artifact-stat">
+          <div className="artifact-stat-value">{s.value}</div>
+          <div className="artifact-stat-label">{s.label}</div>
         </div>
       ))}
     </div>
