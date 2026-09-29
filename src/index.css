@@ -129,3 +129,557 @@ button:disabled{cursor:not-allowed}
 
 .arcade-brand span,.auth-brand>span,.hub-mark,.account-mark,.hub-orbit-core{overflow:hidden}
 .brand-img{width:100%;height:100%;object-fit:cover;display:block}
+
+
+/* =========================================================
+   NINU GAMING — FLOWING ARCADE VISUAL OVERHAUL
+   Styling-only layer: preserves all existing game logic/buttons.
+   ========================================================= */
+
+:root{
+  --ng-black:#05070b;
+  --ng-ink:#080c13;
+  --ng-panel:#0d131d;
+  --ng-panel-hi:#121a27;
+  --ng-border:rgba(255,255,255,.095);
+  --ng-white:#f8fbff;
+  --ng-dim:#8b96a7;
+  --ng-red:#ff3155;
+  --ng-cyan:#24d9ff;
+  --ng-violet:#a46cff;
+  --ng-pink:#ff4fa3;
+  --ng-green:#4ff0a3;
+  --ng-gold:#ffd166;
+}
+
+html{background:var(--ng-black)}
+body{
+  background:
+    radial-gradient(900px 600px at 10% 0%,rgba(255,49,85,.08),transparent 65%),
+    radial-gradient(900px 600px at 90% 100%,rgba(36,217,255,.06),transparent 65%),
+    var(--ng-black);
+  color:var(--ng-white);
+}
+body,#root{min-height:100%}
+::selection{background:rgba(255,49,85,.35);color:#fff}
+
+@keyframes ngHueFlow{
+  0%{filter:hue-rotate(0deg);transform:translate3d(-1%,0,0) scale(1)}
+  50%{filter:hue-rotate(55deg);transform:translate3d(1%,1%,0) scale(1.045)}
+  100%{filter:hue-rotate(115deg);transform:translate3d(-1%,-1%,0) scale(1)}
+}
+@keyframes ngAurora{
+  0%,100%{background-position:0% 50%}
+  50%{background-position:100% 50%}
+}
+@keyframes ngSpin{
+  to{transform:rotate(360deg)}
+}
+@keyframes ngSweep{
+  0%{transform:translateX(-130%)}
+  45%,100%{transform:translateX(230%)}
+}
+@keyframes ngFloat{
+  0%,100%{transform:translate3d(0,0,0)}
+  50%{transform:translate3d(0,-13px,0)}
+}
+@keyframes ngPulse{
+  0%,100%{opacity:.45;box-shadow:0 0 10px currentColor}
+  50%{opacity:1;box-shadow:0 0 24px currentColor}
+}
+@keyframes ngCardIn{
+  from{opacity:0;transform:translateY(14px) scale(.985)}
+  to{opacity:1;transform:translateY(0) scale(1)}
+}
+
+/* Shared atmospheric background. It lives behind content and never captures input. */
+.hub-page,
+.auth-page,
+.artifact-page,
+.account-page,
+.card-game-page{
+  isolation:isolate;
+}
+.hub-page::before,
+.auth-page::before,
+.artifact-page::before,
+.account-page::before,
+.card-game-page::before{
+  content:"";
+  position:absolute;
+  inset:-14%;
+  z-index:0;
+  pointer-events:none;
+  opacity:.58;
+  background:
+    radial-gradient(34% 28% at 15% 22%,rgba(255,49,85,.20),transparent 70%),
+    radial-gradient(30% 26% at 78% 16%,rgba(36,217,255,.16),transparent 70%),
+    radial-gradient(28% 26% at 74% 80%,rgba(164,108,255,.13),transparent 70%),
+    radial-gradient(24% 20% at 22% 84%,rgba(79,240,163,.10),transparent 70%);
+  filter:blur(28px);
+  animation:ngHueFlow 20s ease-in-out infinite alternate;
+}
+.hub-page > *,
+.auth-page > *,
+.artifact-page > *,
+.account-page > *,
+.card-game-page > *{position:relative;z-index:1}
+
+/* Make the tiny in-app brand marks crisp even though the source is the full logo. */
+.brand-img{object-fit:cover;object-position:center;transform:scale(1.48)}
+.arcade-brand span,.auth-brand>span,.hub-mark,.account-mark{
+  position:relative;
+  border:1px solid rgba(255,255,255,.12)!important;
+  box-shadow:0 0 0 1px rgba(255,49,85,.08),0 10px 30px rgba(0,0,0,.28),0 0 28px rgba(255,49,85,.10);
+}
+.arcade-brand span::after,.auth-brand>span::after,.hub-mark::after,.account-mark::after{
+  content:"";
+  position:absolute;
+  inset:-1px;
+  border-radius:inherit;
+  background:linear-gradient(120deg,transparent 20%,rgba(255,255,255,.24) 45%,transparent 68%);
+  background-size:220% 100%;
+  animation:ngAurora 4.6s ease-in-out infinite;
+  pointer-events:none;
+}
+
+/* -------------------- shared headers -------------------- */
+.arcade-header,
+.account-header,
+.hub-header{
+  backdrop-filter:blur(22px) saturate(135%)!important;
+  background:rgba(5,8,13,.72)!important;
+  border-bottom-color:rgba(255,255,255,.10)!important;
+}
+.arcade-header::after,
+.account-header::after,
+.hub-header-inner::after{
+  content:"";
+  position:absolute;
+  left:0;
+  bottom:-1px;
+  width:42%;
+  height:1px;
+  background:linear-gradient(90deg,transparent,#ff3155,#24d9ff,transparent);
+  box-shadow:0 0 16px rgba(255,49,85,.42);
+  animation:ngSweep 7s ease-in-out infinite;
+  pointer-events:none;
+}
+.arcade-session-dot,.hub-online,.account-verified i{
+  animation:ngPulse 2.7s ease-in-out infinite;
+}
+.arcade-help{
+  transition:transform .25s ease,box-shadow .25s ease,border-color .25s ease;
+}
+.arcade-help:hover{
+  transform:translateY(-2px) rotate(5deg);
+  border-color:rgba(36,217,255,.55)!important;
+  box-shadow:0 0 24px rgba(36,217,255,.16);
+}
+
+/* -------------------- hub: vivid, premium, alive -------------------- */
+.hub-page{
+  background:
+    radial-gradient(1200px 700px at -5% -10%,rgba(255,49,85,.16),transparent 66%),
+    radial-gradient(1100px 700px at 105% 5%,rgba(36,217,255,.12),transparent 65%),
+    linear-gradient(135deg,#05070b 0%,#080d14 45%,#090711 100%)!important;
+}
+.hub-main{padding-top:54px}
+.hub-hero{position:relative}
+.hub-hero::before{
+  content:"";
+  position:absolute;
+  width:520px;height:240px;
+  left:-100px;top:-60px;
+  background:linear-gradient(90deg,rgba(255,49,85,.16),rgba(164,108,255,.12),rgba(36,217,255,.0));
+  filter:blur(42px);
+  pointer-events:none;
+}
+.hub-eyebrow,.auth-eyebrow,.auth-panel-eyebrow,.account-eyebrow{
+  color:#ff6e89!important;
+  text-shadow:0 0 22px rgba(255,49,85,.18);
+}
+.hub-hero h1{
+  text-shadow:0 16px 60px rgba(0,0,0,.35);
+}
+.hub-hero h1 span,.account-hero h1 span{
+  background:linear-gradient(100deg,#ff3658 5%,#ff6e7f 30%,#a46cff 55%,#24d9ff 78%,#ff4fa3 100%);
+  background-size:220% 100%;
+  -webkit-background-clip:text;
+  background-clip:text;
+  color:transparent!important;
+  animation:ngAurora 9s ease-in-out infinite;
+}
+.hub-hero p{color:#9aa5b6!important}
+.hub-orbit{filter:drop-shadow(0 0 34px rgba(255,49,85,.12))}
+.hub-orbit-ring{animation:ngSpin 18s linear infinite}
+.hub-orbit .ring-b{animation:ngSpin 11s linear infinite reverse}
+.hub-orbit-core{
+  animation:ngFloat 4.5s ease-in-out infinite;
+  border:1px solid rgba(255,255,255,.12);
+}
+.hub-summary>div{
+  position:relative;
+  overflow:hidden;
+  border-color:rgba(255,255,255,.10)!important;
+  background:
+    linear-gradient(140deg,rgba(255,255,255,.055),rgba(255,255,255,.012)),
+    #0a0f16!important;
+  transition:transform .3s ease,border-color .3s ease,box-shadow .3s ease;
+}
+.hub-summary>div::after{
+  content:"";
+  position:absolute;
+  inset:-80% auto auto -20%;
+  width:65%;
+  height:200%;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.08),transparent);
+  transform:rotate(16deg);
+  animation:ngSweep 6s ease-in-out infinite;
+  pointer-events:none;
+}
+.hub-summary>div:nth-child(1){box-shadow:inset 0 1px 0 rgba(255,49,85,.22)}
+.hub-summary>div:nth-child(2){box-shadow:inset 0 1px 0 rgba(79,240,163,.20)}
+.hub-summary>div:nth-child(3){box-shadow:inset 0 1px 0 rgba(36,217,255,.20)}
+.hub-summary>div:nth-child(4){box-shadow:inset 0 1px 0 rgba(255,209,102,.22)}
+.hub-summary>div:hover{
+  transform:translateY(-4px);
+  border-color:rgba(255,255,255,.18)!important;
+  box-shadow:0 18px 42px rgba(0,0,0,.25);
+}
+
+.hub-games{gap:15px}
+.hub-game-card{
+  border:1px solid transparent!important;
+  background:
+    linear-gradient(150deg,rgba(9,14,20,.96),rgba(8,11,16,.92)) padding-box,
+    conic-gradient(from var(--ng-angle,0deg),rgba(255,49,85,.75),rgba(164,108,255,.38),rgba(36,217,255,.58),rgba(79,240,163,.35),rgba(255,79,163,.50),rgba(255,49,85,.75)) border-box!important;
+  box-shadow:0 22px 80px rgba(0,0,0,.40);
+  transition:transform .35s cubic-bezier(.2,.8,.2,1),box-shadow .35s ease,filter .35s ease;
+  animation:ngCardIn .5s ease both;
+}
+.hub-game-card:nth-child(1){animation-delay:.04s}
+.hub-game-card:nth-child(2){animation-delay:.10s}
+.hub-game-card:nth-child(3){animation-delay:.16s}
+.hub-game-card:hover{
+  transform:translateY(-7px);
+  box-shadow:0 28px 95px rgba(0,0,0,.52),0 0 42px rgba(255,49,85,.07);
+}
+.hub-game-icon{
+  position:relative;
+  border:1px solid rgba(255,255,255,.08);
+  background:
+    radial-gradient(circle at 28% 20%,rgba(255,255,255,.10),transparent 38%),
+    linear-gradient(145deg,rgba(255,255,255,.045),rgba(255,255,255,.01));
+  overflow:hidden;
+}
+.hub-game-icon::after{
+  content:"";
+  position:absolute;
+  inset:-20%;
+  background:conic-gradient(from 0deg,transparent,rgba(255,255,255,.14),transparent 20%,transparent);
+  animation:ngSpin 7s linear infinite;
+}
+.hub-red .hub-game-icon{color:#ff4f70!important;box-shadow:0 0 55px rgba(255,49,85,.16),inset 0 0 28px rgba(255,49,85,.05)}
+.hub-green .hub-game-icon{color:#5bf0ad!important;box-shadow:0 0 55px rgba(79,240,163,.13),inset 0 0 28px rgba(79,240,163,.04)}
+.hub-cyan .hub-game-icon{color:#4ce0ff!important;box-shadow:0 0 55px rgba(36,217,255,.13),inset 0 0 28px rgba(36,217,255,.04)}
+.hub-game-card h2{font-weight:950}
+.hub-game-card p{color:#93a0b0!important}
+.hub-card-top b,.hub-card-footer i{
+  transition:all .25s ease;
+}
+.hub-game-card:hover .hub-card-top b{
+  border-color:rgba(36,217,255,.30)!important;
+  color:#f7fbff;
+}
+.hub-game-card:hover .hub-card-footer i{
+  transform:rotate(90deg);
+  border-color:rgba(255,49,85,.34);
+  color:#fff;
+}
+.hub-expanded{
+  background:linear-gradient(90deg,rgba(255,49,85,.035),rgba(164,108,255,.035),rgba(36,217,255,.025));
+}
+.hub-play{
+  background:linear-gradient(100deg,#fff,#e9f5ff,#fff)!important;
+  background-size:220% 100%!important;
+  animation:ngAurora 4.5s ease-in-out infinite;
+  transition:transform .25s ease,box-shadow .25s ease!important;
+}
+.hub-play:hover{transform:translateY(-2px) scale(1.015)!important;box-shadow:0 10px 28px rgba(255,255,255,.12)}
+.hub-control-banner{
+  position:relative;
+  overflow:hidden;
+  background:
+    linear-gradient(100deg,rgba(255,49,85,.12),rgba(164,108,255,.10),rgba(36,217,255,.08),rgba(255,79,163,.08)),
+    #0a0f15!important;
+  background-size:240% 100%;
+  animation:ngAurora 12s ease-in-out infinite;
+  border-color:rgba(255,255,255,.12)!important;
+  box-shadow:0 18px 55px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.05);
+}
+.hub-control-banner:hover{transform:translateY(-3px);box-shadow:0 24px 65px rgba(0,0,0,.34),0 0 28px rgba(36,217,255,.06)}
+.hub-footer{color:#586273!important}
+
+/* -------------------- auth: cinematic login screen -------------------- */
+.auth-page{
+  background:
+    radial-gradient(800px 560px at 8% 18%,rgba(255,49,85,.15),transparent 66%),
+    radial-gradient(760px 520px at 94% 84%,rgba(36,217,255,.10),transparent 66%),
+    linear-gradient(135deg,#04060a,#080b12 45%,#0a0712)!important;
+}
+.auth-showcase,.auth-card-wrap{
+  border-color:rgba(255,255,255,.10)!important;
+  background:
+    linear-gradient(145deg,rgba(255,255,255,.055),rgba(255,255,255,.012)) padding-box,
+    linear-gradient(125deg,rgba(255,49,85,.30),rgba(164,108,255,.18),rgba(36,217,255,.25),rgba(255,79,163,.18)) border-box;
+}
+.auth-showcase{
+  box-shadow:0 30px 110px rgba(0,0,0,.55),0 0 60px rgba(255,49,85,.05);
+}
+.auth-showcase::before{
+  content:"";
+  position:absolute;
+  width:460px;height:460px;
+  left:-250px;bottom:-260px;
+  border-radius:50%;
+  background:conic-gradient(from 0deg,rgba(255,49,85,.15),rgba(164,108,255,.09),rgba(36,217,255,.12),rgba(255,49,85,.15));
+  filter:blur(18px);
+  animation:ngSpin 18s linear infinite;
+  pointer-events:none;
+}
+.auth-brand>span{animation:ngFloat 5s ease-in-out infinite}
+.auth-feature-list>div{
+  background:linear-gradient(120deg,rgba(255,255,255,.045),rgba(255,255,255,.012))!important;
+  transition:transform .25s ease,border-color .25s ease,background .25s ease;
+}
+.auth-feature-list>div:hover{
+  transform:translateX(5px);
+  border-color:rgba(36,217,255,.20)!important;
+  background:linear-gradient(120deg,rgba(36,217,255,.07),rgba(255,255,255,.012))!important;
+}
+.auth-input{
+  background:#070a0f!important;
+  border-color:rgba(255,255,255,.12)!important;
+  transition:border-color .2s ease,box-shadow .2s ease,transform .2s ease;
+}
+.auth-input:focus{
+  border-color:rgba(36,217,255,.68)!important;
+  box-shadow:0 0 0 4px rgba(36,217,255,.08),0 0 24px rgba(36,217,255,.10)!important;
+  transform:translateY(-1px);
+}
+.auth-primary{
+  background:linear-gradient(100deg,#ff3155,#ff4f8e,#a46cff,#24d9ff,#ff3155)!important;
+  background-size:300% 100%!important;
+  animation:ngAurora 8s ease-in-out infinite;
+  box-shadow:0 16px 44px rgba(255,49,85,.18),0 0 28px rgba(164,108,255,.09)!important;
+}
+.auth-primary:not(:disabled):hover{transform:translateY(-2px);box-shadow:0 18px 55px rgba(255,49,85,.24)!important}
+.auth-tabs button.active{
+  background:linear-gradient(110deg,rgba(255,49,85,.20),rgba(164,108,255,.16),rgba(36,217,255,.10))!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 0 24px rgba(164,108,255,.07);
+}
+.auth-secondary:hover{border-color:rgba(36,217,255,.30)!important;color:#fff}
+
+/* -------------------- artifact: stronger game-lab feel -------------------- */
+.artifact-page{
+  background:
+    radial-gradient(900px 600px at 10% -10%,rgba(255,49,85,.16),transparent 64%),
+    radial-gradient(700px 520px at 88% 72%,rgba(164,108,255,.07),transparent 66%),
+    #070a0f!important;
+}
+.artifact-stage{
+  border-color:rgba(255,255,255,.10)!important;
+  background:
+    linear-gradient(145deg,rgba(255,255,255,.040),rgba(255,255,255,.009)) padding-box,
+    linear-gradient(130deg,rgba(255,49,85,.26),rgba(164,108,255,.18),rgba(36,217,255,.20),rgba(255,49,85,.26)) border-box;
+  box-shadow:0 28px 100px rgba(0,0,0,.45),0 0 50px rgba(255,49,85,.04);
+}
+.artifact-stage-head{background:linear-gradient(110deg,rgba(255,49,85,.055),rgba(164,108,255,.035),rgba(36,217,255,.025));}
+.artifact-stage-head h1{font-weight:950}
+.artifact-session{
+  border-color:rgba(255,255,255,.10)!important;
+  background:linear-gradient(145deg,rgba(255,255,255,.05),rgba(255,255,255,.012))!important;
+}
+.artifact-player-field,.artifact-stat,.artifact-piece{
+  border-color:rgba(255,255,255,.095)!important;
+  background:linear-gradient(145deg,rgba(255,255,255,.04),rgba(255,255,255,.01))!important;
+}
+.artifact-player-field:focus-within{
+  border-color:rgba(36,217,255,.42)!important;
+  box-shadow:0 0 28px rgba(36,217,255,.07);
+}
+.artifact-result{
+  border-color:rgba(255,49,85,.34)!important;
+  background:
+    linear-gradient(155deg,rgba(18,22,30,.98),rgba(8,11,16,.97)) padding-box,
+    linear-gradient(130deg,rgba(255,49,85,.44),rgba(164,108,255,.20),rgba(36,217,255,.22),rgba(255,49,85,.44)) border-box;
+  box-shadow:0 28px 90px rgba(0,0,0,.48),0 0 50px rgba(255,49,85,.08);
+}
+.artifact-roll-button{
+  background:linear-gradient(100deg,#ff3155,#ff4f8e,#a46cff,#24d9ff,#ff3155)!important;
+  background-size:300% 100%!important;
+  animation:ngAurora 7s ease-in-out infinite;
+  box-shadow:0 18px 45px rgba(255,49,85,.20),0 0 34px rgba(36,217,255,.07)!important;
+}
+.artifact-roll-button:hover:not(:disabled){transform:translateY(-2px)!important;box-shadow:0 22px 58px rgba(255,49,85,.26),0 0 42px rgba(164,108,255,.12)!important}
+.live-item{
+  background:linear-gradient(145deg,rgba(255,255,255,.045),rgba(255,255,255,.012))!important;
+  border-color:rgba(255,255,255,.09)!important;
+}
+
+/* -------------------- leaderboard / generic artifact controls -------------------- */
+.leaderboard-row{
+  transition:transform .2s ease,background .2s ease,border-color .2s ease;
+}
+.leaderboard-row:hover{transform:translateX(4px);background:rgba(255,255,255,.025)}
+.leaderboard-row.me{
+  box-shadow:inset 3px 0 0 #ff3155,0 0 28px rgba(255,49,85,.05);
+}
+.leaderboard-row .rank{color:#697587}
+
+/* -------------------- Elementals: make the card game feel alive -------------------- */
+.card-game-page{
+  background:
+    radial-gradient(900px 650px at 12% 2%,rgba(36,217,255,.11),transparent 64%),
+    radial-gradient(880px 620px at 88% 92%,rgba(164,108,255,.12),transparent 64%),
+    radial-gradient(700px 500px at 50% 50%,rgba(255,79,163,.05),transparent 70%),
+    #04070c!important;
+}
+.card-game-header{
+  background:rgba(4,7,12,.70)!important;
+  border-bottom-color:rgba(255,255,255,.10)!important;
+}
+.card-game-main{position:relative}
+.card-menu-section,.card-game-section{
+  position:relative;
+  border-color:rgba(255,255,255,.10)!important;
+  background:
+    linear-gradient(145deg,rgba(255,255,255,.048),rgba(255,255,255,.012)) padding-box,
+    linear-gradient(120deg,rgba(36,217,255,.20),rgba(164,108,255,.18),rgba(255,79,163,.17),rgba(36,217,255,.20)) border-box!important;
+  box-shadow:0 28px 95px rgba(0,0,0,.40),0 0 46px rgba(164,108,255,.04);
+}
+.card-menu-section::before,.card-game-section::before{
+  content:"";
+  position:absolute;
+  inset:-30%;
+  pointer-events:none;
+  background:conic-gradient(from 180deg,transparent,rgba(36,217,255,.07),transparent 18%,rgba(164,108,255,.06),transparent 38%);
+  filter:blur(14px);
+  animation:ngSpin 20s linear infinite;
+}
+.card-game-page button{
+  transition:transform .22s ease,box-shadow .22s ease,border-color .22s ease,filter .22s ease;
+}
+.card-game-page button:hover:not(:disabled){
+  transform:translateY(-2px);
+}
+.card-game-page button:active:not(:disabled){transform:translateY(0) scale(.985)}
+.card-game-page .bg-gradient-to-br,
+.card-game-page .bg-gradient-to-r{
+  background-size:220% 220%!important;
+  animation:ngAurora 8s ease-in-out infinite;
+  box-shadow:0 16px 42px rgba(0,0,0,.20);
+}
+.card-game-page img{filter:saturate(1.12) contrast(1.05);transition:transform .3s ease,filter .3s ease}
+.card-game-page button:hover img{transform:scale(1.035)}
+.card-game-page .rounded-2xl.border,
+.card-game-page .rounded-xl.border{
+  border-color:rgba(255,255,255,.10)!important;
+}
+
+/* -------------------- racer menus / overlays -------------------- */
+.racing-page{
+  background:
+    radial-gradient(900px 650px at 50% -10%,rgba(36,217,255,.10),transparent 68%),
+    radial-gradient(700px 500px at 10% 90%,rgba(164,108,255,.07),transparent 68%),
+    #020408!important;
+}
+.racing-menu,.racing-state,.racing-result{
+  background:
+    linear-gradient(145deg,rgba(255,255,255,.045),rgba(255,255,255,.010)) padding-box,
+    linear-gradient(125deg,rgba(36,217,255,.24),rgba(164,108,255,.18),rgba(255,79,163,.13),rgba(36,217,255,.24)) border-box!important;
+  border-color:transparent!important;
+  box-shadow:0 32px 110px rgba(0,0,0,.60),0 0 60px rgba(36,217,255,.05);
+}
+.racing-menu::before,.racing-state::before,.racing-result::before{
+  content:"";
+  position:absolute;
+  width:460px;height:460px;
+  right:-240px;top:-260px;
+  border-radius:50%;
+  background:conic-gradient(from 0deg,rgba(36,217,255,.15),rgba(164,108,255,.10),rgba(255,79,163,.11),rgba(36,217,255,.15));
+  filter:blur(22px);
+  animation:ngSpin 17s linear infinite;
+  pointer-events:none;
+}
+.racing-menu input{
+  transition:border-color .2s ease,box-shadow .2s ease,transform .2s ease;
+}
+.racing-menu input:focus{
+  border-color:rgba(36,217,255,.55)!important;
+  box-shadow:0 0 24px rgba(36,217,255,.12)!important;
+  outline:none;
+}
+.racing-menu button:first-of-type{
+  background:linear-gradient(100deg,#19d3ff,#24d9ff,#a46cff,#ff4fa3,#19d3ff)!important;
+  background-size:300% 100%!important;
+  animation:ngAurora 8s ease-in-out infinite;
+}
+.racing-menu button:hover:not(:disabled){box-shadow:0 14px 42px rgba(36,217,255,.12)}
+.racing-state .animate-pulse{color:#dff9ff;text-shadow:0 0 22px rgba(36,217,255,.22)}
+.racing-leaderboard{
+  background:rgba(2,4,8,.90)!important;
+}
+.racing-leaderboard button:hover{box-shadow:0 0 20px rgba(36,217,255,.10)}
+.racing-leaderboard>div:last-child>div{
+  border:1px solid rgba(255,255,255,.07);
+}
+
+/* -------------------- account center -------------------- */
+.account-page{
+  background:
+    radial-gradient(900px 600px at 10% -10%,rgba(255,49,85,.15),transparent 65%),
+    radial-gradient(900px 600px at 100% 15%,rgba(36,217,255,.09),transparent 64%),
+    radial-gradient(700px 500px at 70% 95%,rgba(164,108,255,.08),transparent 68%),
+    #06090e!important;
+}
+.account-glow-one{animation:ngHueFlow 18s ease-in-out infinite alternate}
+.account-glow-two{animation:ngHueFlow 22s ease-in-out infinite alternate-reverse}
+.account-stat,.account-panel{
+  border-color:rgba(255,255,255,.10)!important;
+  background:
+    linear-gradient(145deg,rgba(255,255,255,.045),rgba(255,255,255,.010)) padding-box,
+    linear-gradient(125deg,rgba(255,49,85,.12),rgba(164,108,255,.10),rgba(36,217,255,.11),rgba(255,49,85,.12)) border-box;
+}
+.account-stat{
+  transition:transform .25s ease,box-shadow .25s ease,border-color .25s ease;
+}
+.account-stat:hover{
+  transform:translateY(-4px);
+  box-shadow:0 20px 55px rgba(0,0,0,.28),0 0 30px rgba(164,108,255,.05);
+}
+.account-action:hover{
+  transform:translateX(4px);
+  color:#fff!important;
+}
+.progress-track{box-shadow:inset 0 0 0 1px rgba(255,255,255,.04),0 0 18px rgba(36,217,255,.035)}
+.progress-track i{background:linear-gradient(90deg,#24d9ff,#a46cff,#ff4fa3)!important;background-size:200% 100%;animation:ngAurora 6s ease-in-out infinite}
+
+/* Keep the actual game surface readable while introducing motion. */
+@media(max-width:600px){
+  .hub-main{padding-top:36px}
+  .hub-game-card:hover{transform:none}
+  .hub-game-card:active{transform:scale(.995)}
+  .auth-showcase::before,.card-menu-section::before,.card-game-section::before{display:none}
+  .artifact-stage-head{background:linear-gradient(110deg,rgba(255,49,85,.07),rgba(164,108,255,.035),rgba(36,217,255,.025))}
+}
+
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:.01ms!important;
+    animation-iteration-count:1!important;
+    transition-duration:.01ms!important;
+    scroll-behavior:auto!important;
+  }
+}
