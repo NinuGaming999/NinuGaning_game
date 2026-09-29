@@ -87,7 +87,7 @@ export default function AccountCenter({ user, playerName, onBack, onSignOut }) {
       <div className="account-glow account-glow-one" /><div className="account-glow account-glow-two" />
       <header className="account-header">
         <button type="button" className="account-back" onClick={onBack}>← ARCADE</button>
-        <div className="account-brand"><span className="account-mark">N</span><span><small>NINU GAMING</small><strong>ACCOUNT CONTROL</strong></span></div>
+        <div className="account-brand"><span className="account-mark"><img className="brand-img" src="/favicon.png" alt="NINU Gaming" /></span><span><small>NINU GAMING</small><strong>ACCOUNT CONTROL</strong></span></div>
         <button type="button" className="account-signout" onClick={onSignOut}>SIGN OUT</button>
       </header>
       <main className="account-main">

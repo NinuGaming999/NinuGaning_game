@@ -39,7 +39,7 @@ export default function GameHub({ playerName, onSignOut, onOpenArtifact, onOpenR
 
   return <div className="hub-page">
     <header className="hub-header"><div className="hub-shell hub-header-inner">
-      <div className="hub-brand"><span className="hub-mark">N</span><span><small>NINU GAMING</small><strong>ARCADE</strong></span></div>
+      <div className="hub-brand"><span className="hub-mark"><img className="brand-img" src="/favicon.png" alt="NINU Gaming" /></span><span><small>NINU GAMING</small><strong>ARCADE</strong></span></div>
       <div className="hub-header-actions">
         <button type="button" className="hub-account" onClick={onOpenAccount}><span className="hub-online" /> {playerName} <b>ACCOUNT ↗</b></button>
         <button type="button" className="hub-signout" onClick={onSignOut}>SIGN OUT</button>
@@ -49,7 +49,7 @@ export default function GameHub({ playerName, onSignOut, onOpenArtifact, onOpenR
       <section className="hub-hero"><div><div className="hub-eyebrow">PLAYER HUB · {playerName.toUpperCase()}</div>
         <h1>Choose your<br /><span>next world.</span></h1>
         <p>Every section expands before you launch it. Inspect your records, understand each game, then jump straight into the action.</p>
-      </div><div className="hub-orbit"><div className="hub-orbit-ring ring-a"/><div className="hub-orbit-ring ring-b"/><div className="hub-orbit-core">N</div></div></section>
+      </div><div className="hub-orbit"><div className="hub-orbit-ring ring-a"/><div className="hub-orbit-ring ring-b"/><div className="hub-orbit-core"><img className="brand-img" src="/favicon.png" alt="NINU Gaming" /></div></div></section>
       <section className="hub-summary">
         <div><small>ARTIFACT BEST</small><strong>{stats.artifact?Number(stats.artifact.meltDamage||0).toLocaleString():'—'}</strong><span>MELT DAMAGE</span></div>
         <div><small>RACING BEST</small><strong>{stats.racing?Number(stats.racing.score||0).toLocaleString():'—'}</strong><span>RACE SCORE</span></div>

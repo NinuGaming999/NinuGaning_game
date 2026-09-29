@@ -3,7 +3,7 @@ export default function Header({ title = 'Artifact Roll Simulator', onBack }) {
     <header className="arcade-header">
       <div className="arcade-header-left">
         {onBack && <button type="button" className="arcade-back" onClick={onBack}>← ARCADE</button>}
-        <div className="arcade-brand"><span>N</span><strong>NINU GAMING</strong></div>
+        <div className="arcade-brand"><span><img className="brand-img" src="/favicon.png" alt="NINU Gaming" /></span><strong>NINU GAMING</strong></div>
       </div>
       <div className="arcade-title"><small>ARCADE SESSION</small><strong>{title}</strong></div>
       <div className="arcade-header-right">

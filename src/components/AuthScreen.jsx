@@ -13,7 +13,7 @@ export function SignInScreen({ onAuthSuccess }) {
   const submit=(e)=>{e.preventDefault();run(async()=>{if(mode==='signin')return signInWithEmail(email,password);if(mode==='signup')return signUpWithEmail(email,password);await sendResetEmail(email);setInfo('If that email has an account, a reset link is on its way.');return null;});};
   return <div className="auth-page"><div className="auth-backdrop"/>
     <div className="auth-layout">
-      <section className="auth-showcase"><div className="auth-brand"><span>N</span><div><small>NINU GAMING</small><strong>ARCADE</strong></div></div>
+      <section className="auth-showcase"><div className="auth-brand"><span><img className="brand-img" src="/favicon.png" alt="NINU Gaming" /></span><div><small>NINU GAMING</small><strong>ARCADE</strong></div></div>
         <div className="auth-showcase-content"><div className="auth-eyebrow">PLAYER ACCOUNT SYSTEM</div><h2>One account.<br/><span>Three worlds.</span></h2><p>Keep your scores, cards, racing records, and player identity connected across the entire arcade.</p>
           <div className="auth-feature-list"><div><b>01</b><span><strong>LIVE SCOREBOARD</strong><small>Your best scores follow your account.</small></span></div><div><b>02</b><span><strong>VERIFIED IDENTITY</strong><small>Your player name belongs to your account.</small></span></div><div><b>03</b><span><strong>GAME PROGRESSION</strong><small>Cards and Arcade Points stay linked.</small></span></div></div>
         </div><div className="auth-foot">NINU GAMING ARCADE · ACCOUNT PORTAL</div>
