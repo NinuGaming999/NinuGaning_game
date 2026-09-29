@@ -253,8 +253,8 @@ export default function CardGame({ initialPlayerName, onBack }) {
   const uniqueOwned = ownedCards.length;
 
   return (
-    <div className="fixed inset-0 overflow-y-auto bg-[#05070a] text-white">
-      <header className="sticky top-0 z-40 border-b border-white/10 bg-[#05070a]/90 backdrop-blur px-4 py-3 flex items-center justify-between">
+    <div className="card-game-page fixed inset-0 overflow-y-auto bg-[#05070a] text-white">
+      <header className="card-game-header sticky top-0 z-40 border-b border-white/10 bg-[#05070a]/90 backdrop-blur px-4 py-3 flex items-center justify-between">
         <button type="button" onClick={screen === 'menu' ? onBack : () => setScreen('menu')} className="text-white/60 text-sm font-bold">
           ← {screen === 'menu' ? 'NINU GAMING' : 'Elementals Menu'}
         </button>
@@ -265,9 +265,9 @@ export default function CardGame({ initialPlayerName, onBack }) {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto p-4 md:p-8">
+      <main className="card-game-main max-w-6xl mx-auto p-4 md:p-8">
         {screen === 'menu' && (
-          <section className="max-w-3xl mx-auto text-center">
+          <section className="card-menu-section max-w-3xl mx-auto text-center">
             <div className="text-[10px] uppercase tracking-[0.35em] text-[#19d3ff] font-black">GAME 03</div>
             <h1 className="text-4xl md:text-6xl font-black tracking-tight mt-2">ELEMENTALS</h1>
             <p className="text-white/50 mt-3 text-sm md:text-base">Build a 35-card elemental collection, open packs with Arcade Points, then test your cards in reaction-based duels.</p>
@@ -296,7 +296,7 @@ export default function CardGame({ initialPlayerName, onBack }) {
         )}
 
         {screen === 'opening' && (
-          <section className="max-w-5xl mx-auto">
+          <section className="card-game-section max-w-5xl mx-auto">
             <div className="text-center"><div className="text-[#19d3ff] text-xs font-black tracking-widest">PACK OPENED</div><h2 className="text-3xl font-black mt-1">YOUR 5 CARDS</h2></div>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-7">
               {pack.map((card, index) => (
