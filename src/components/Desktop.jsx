@@ -6,45 +6,29 @@ import StatsBreakdown from './StatsBreakdown';
 import Leaderboard from './Leaderboard';
 import ObserverFeed from './ObserverFeed';
 
-export default function Desktop({
-  playerName,
-  setPlayerName,
-  roll,
-  rolling,
-  onRoll,
-  nameError,
-  leaderboard,
-  loading,
-  error,
-  liveRolls,
-  onBack,
-}) {
+export default function Desktop({ playerName, setPlayerName, roll, rolling, onRoll, nameError, leaderboard, loading, error, liveRolls, onBack }) {
   return (
-    <div className="h-screen bg-[#1A1A1A] flex flex-col overflow-hidden">
-      <Header onBack={onBack} />
-
-      <div className="flex flex-1 min-h-0">
-        <div className="w-[60%] flex flex-col items-center gap-5 p-8 overflow-y-auto">
-          <NameInput value={playerName} onChange={setPlayerName} disabled={rolling} />
-          {nameError && <div className="text-[#FF2E2E] text-sm -mt-3">{nameError}</div>}
-          <ArtifactCard roll={roll} />
-          <RollButton onRoll={onRoll} rolling={rolling} />
-          <StatsBreakdown roll={roll} />
-        </div>
-
-        <div className="w-[40%] border-l-2 border-[#FF2E2E] p-6 min-h-0">
-          <Leaderboard
-            leaderboard={leaderboard}
-            currentPlayerName={playerName}
-            loading={loading}
-            error={error}
-          />
-        </div>
-      </div>
-
-      <div className="border-t-2 border-[#FF2E2E] shrink-0">
-        <ObserverFeed rolls={liveRolls} />
-      </div>
+    <div className="artifact-page">
+      <Header onBack={onBack} title="Artifact Roll Simulator" />
+      <main className="artifact-desktop">
+        <section className="artifact-stage">
+          <div className="artifact-stage-head">
+            <div><span>GAME 01 · RNG LAB</span><h1>ROLL FOR THE IMPOSSIBLE.</h1><p>Build a five-piece Arlecchino set and push the damage ceiling.</p></div>
+            <div className="artifact-session"><small>PLAYER</small><strong>{playerName}</strong><span>VERIFIED SESSION</span></div>
+          </div>
+          <div className="artifact-workspace">
+            <div className="artifact-roll-zone">
+              <NameInput value={playerName} onChange={setPlayerName} disabled={rolling} />
+              {nameError && <div className="artifact-error">{nameError}</div>}
+              <ArtifactCard roll={roll} />
+              <RollButton onRoll={onRoll} rolling={rolling} />
+              <StatsBreakdown roll={roll} />
+            </div>
+            <aside className="artifact-side"><Leaderboard leaderboard={leaderboard} currentPlayerName={playerName} loading={loading} error={error} /></aside>
+          </div>
+        </section>
+        <section className="artifact-live"><ObserverFeed rolls={liveRolls} /></section>
+      </main>
     </div>
   );
 }
