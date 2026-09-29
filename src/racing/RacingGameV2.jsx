@@ -413,9 +413,9 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
   }, [matchId, uid]);
 
   return (
-    <div className="fixed inset-0 bg-black text-white overflow-hidden select-none">
+    <div className="racing-page fixed inset-0 bg-black text-white overflow-hidden select-none">
       {phase === 'race' && (
-        <div ref={mountRef} className="absolute inset-0">
+        <div ref={mountRef} className="racing-race-shell absolute inset-0">
           <canvas ref={canvasRef} className="w-full h-full block" />
           <div className="absolute top-3 left-3 right-3 flex justify-between items-start pointer-events-none font-bold tracking-wide text-sm">
             <div>NEON MOUNTAIN RACER</div>
@@ -457,7 +457,7 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
       )}
 
       {phase === 'menu' && (
-        <div className="h-full flex flex-col items-center justify-center gap-4 px-6">
+        <div className="racing-menu h-full flex flex-col items-center justify-center gap-4 px-6">
           <h1 className="text-3xl font-black tracking-wide">NEON <span className="text-[#19d3ff]">MOUNTAIN</span> RACER</h1>
           <p className="text-white/60 text-sm">7 KM mountain circuit • 3 laps • AI or 1v1</p>
           <input
@@ -476,14 +476,14 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
       )}
 
       {phase === 'queue' && (
-        <div className="h-full flex flex-col items-center justify-center gap-4">
+        <div className="racing-state h-full flex flex-col items-center justify-center gap-4">
           <div className="animate-pulse text-lg font-bold">{status || 'Searching for a racer...'}</div>
           <button onClick={cancelQueue} className="px-6 py-2 rounded border border-white/30">CANCEL</button>
         </div>
       )}
 
       {phase === 'result' && result && (
-        <div className="h-full flex flex-col items-center justify-center gap-3 px-6">
+        <div className="racing-result h-full flex flex-col items-center justify-center gap-3 px-6">
           <h2 className="text-2xl font-black">{result.reason === 'finished' ? 'RACE COMPLETE' : 'RACE ENDED'}</h2>
           <div className="text-white/80">Score: <b>{result.score}</b> • Distance: <b>{result.distance}m</b> • Place: <b>{result.place}</b></div>
           {!result.saved && <div className="text-[#ff914d] text-xs">Score could not be saved to the leaderboard.</div>}
@@ -495,7 +495,7 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
       )}
 
       {showLeaderboard && (
-        <div className="fixed inset-0 z-40 bg-black/90 flex flex-col">
+        <div className="racing-leaderboard fixed inset-0 z-40 flex flex-col">
           <div className="flex items-center justify-between p-4 border-b border-white/20">
             <h2 className="font-bold tracking-wide">RACING LEADERBOARD</h2>
             <button onClick={() => setShowLeaderboard(false)} className="text-sm border border-white/30 rounded-full px-4 py-1.5">Close</button>
