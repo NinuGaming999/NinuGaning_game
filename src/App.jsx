@@ -16,6 +16,7 @@ import MusicPlayer from './components/MusicPlayer';
 import { useAuth } from './hooks/useAuth';
 import { signOutUser } from './utils/authService';
 import { SignInScreen, VerifyEmailScreen, ChooseUsernameScreen } from './components/AuthScreen';
+import AccountCenter from './components/AccountCenter';
 
 const ROLL_BUTTON_LOCK_MS = 2000;
 const REVEAL_DELAY_MS = 300;
@@ -147,6 +148,7 @@ export default function App() {
         setPlayerName={() => {}}
         setScreen={setScreen}
         onSignOut={handleSignOut}
+        authUser={auth.user}
       />
     );
   }
@@ -159,7 +161,10 @@ export default function App() {
   );
 }
 
-function AppScreen({ screen, isMobile, playerName, setPlayerName, setScreen, onSignOut }) {
+function AppScreen({ screen, isMobile, playerName, setPlayerName, setScreen, onSignOut, authUser }) {
+  if (screen === 'account') {
+    return <AccountCenter user={authUser} playerName={playerName} onBack={() => setScreen('hub')} onSignOut={onSignOut} />;
+  }
   if (screen === 'artifact') {
     return (
       <ArtifactGame
@@ -197,6 +202,7 @@ function AppScreen({ screen, isMobile, playerName, setPlayerName, setScreen, onS
       onOpenArtifact={() => setScreen('artifact')}
       onOpenRacing={() => setScreen('racing')}
       onOpenCards={() => setScreen('cards')}
+      onOpenAccount={() => setScreen('account')}
     />
   );
 }
