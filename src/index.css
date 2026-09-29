@@ -219,12 +219,6 @@ body,#root{min-height:100%}
   filter:blur(28px);
   animation:ngHueFlow 20s ease-in-out infinite alternate;
 }
-.hub-page > *,
-.auth-page > *,
-.artifact-page > *,
-.account-page > *,
-.card-game-page > *{position:relative;z-index:1}
-
 /* Make the tiny in-app brand marks crisp even though the source is the full logo. */
 .brand-img{object-fit:cover;object-position:center;transform:scale(1.48)}
 .arcade-brand span,.auth-brand>span,.hub-mark,.account-mark{
