@@ -1,209 +1,42 @@
 import { useState } from 'react';
-import {
-  PASSWORD_MIN,
-  USERNAME_MAX,
-  USERNAME_MIN,
-  claimUsername,
-  friendlyError,
-  resendVerification,
-  sendResetEmail,
-  signInWithEmail,
-  signOutUser,
-  signUpWithEmail,
-  validateUsername,
-} from '../utils/authService';
+import { PASSWORD_MIN, USERNAME_MAX, USERNAME_MIN, claimUsername, friendlyError, resendVerification, sendResetEmail, signInWithEmail, signOutUser, signUpWithEmail, validateUsername } from '../utils/authService';
 
-const inputClass =
-  'w-full bg-[#111] border border-[#444] focus:border-[#FF2E2E] outline-none rounded-lg px-4 py-3 text-white';
-const primaryBtn =
-  'w-full bg-[#FF2E2E] hover:bg-[#e02020] disabled:opacity-50 text-white font-black tracking-wide rounded-lg py-3 transition';
-const ghostBtn =
-  'w-full border border-[#444] hover:border-[#FF2E2E] disabled:opacity-50 text-white font-bold rounded-lg py-3 transition';
-
-function Shell({ title, subtitle, children }) {
-  return (
-    <div className="min-h-screen bg-[#121212] text-white flex items-center justify-center p-5">
-      <div className="w-full max-w-md rounded-2xl border border-[#333] bg-[#191919] p-6 md:p-8 shadow-2xl">
-        <div className="text-xs text-[#FF2E2E] font-black tracking-[0.28em]">NINU GAMING ARCADE</div>
-        <h1 className="text-2xl md:text-3xl font-black tracking-tight mt-1">{title}</h1>
-        {subtitle && <p className="text-[#999] text-sm mt-2">{subtitle}</p>}
-        <div className="mt-6 space-y-3">{children}</div>
-      </div>
-    </div>
-  );
+function AuthPanel({ eyebrow,title,subtitle,children }) {
+  return <div className="auth-panel"><div className="auth-panel-glow"/><div className="auth-panel-eyebrow">{eyebrow}</div><h1>{title}</h1><p>{subtitle}</p><div className="auth-panel-body">{children}</div></div>;
 }
-
-function Message({ error, info }) {
-  if (error) return <div className="text-[#FF6B6B] text-sm">{error}</div>;
-  if (info) return <div className="text-[#43D17A] text-sm">{info}</div>;
-  return null;
-}
+function Message({ error,info }) { return error?<div className="auth-message error">{error}</div>:info?<div className="auth-message success">{info}</div>:null; }
+const inputClass='auth-input', primaryBtn='auth-primary', ghostBtn='auth-secondary';
 
 export function SignInScreen({ onAuthSuccess }) {
-  const [mode, setMode] = useState('signin'); // signin | signup | reset
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [info, setInfo] = useState('');
-
-  const run = async (fn) => {
-    setBusy(true);
-    setError('');
-    setInfo('');
-    try {
-      const res = await fn();
-      if (res?.user || res) {
-        await onAuthSuccess?.();
-      }
-    } catch (e) {
-      console.error('Auth error:', e);
-      setError(friendlyError(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const submit = (e) => {
-    e.preventDefault();
-    run(async () => {
-      if (mode === 'signin') return await signInWithEmail(email, password);
-      else if (mode === 'signup') return await signUpWithEmail(email, password);
-      else {
-        await sendResetEmail(email);
-        setInfo('If that email has an account, a reset link is on its way.');
-      }
-    });
-  };
-
-  const title = mode === 'signup' ? 'Create account' : mode === 'reset' ? 'Reset password' : 'Sign in';
-
-  return (
-    <Shell title={title} subtitle="Your account keeps your scores and cards safe. Nobody else can post under your name.">
-      <form onSubmit={submit} className="space-y-3">
-        <input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className={inputClass} />
-        {mode !== 'reset' && (
-          <input
-            type="password"
-            required
-            minLength={mode === 'signup' ? PASSWORD_MIN : undefined}
-            autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder={mode === 'signup' ? `Password (${PASSWORD_MIN}+ characters)` : 'Password'}
-            className={inputClass}
-          />
-        )}
-        <Message error={error} info={info} />
-        <button type="submit" disabled={busy} className={primaryBtn}>
-          {busy ? 'PLEASE WAIT…' : mode === 'signup' ? 'CREATE ACCOUNT' : mode === 'reset' ? 'SEND RESET LINK' : 'SIGN IN'}
-        </button>
-      </form>
-
-      <div className="flex justify-between text-sm text-[#999] pt-1">
-        {mode === 'signin' && (
-          <>
-            <button type="button" onClick={() => { setMode('signup'); setError(''); }} className="hover:text-white">Create an account</button>
-            <button type="button" onClick={() => { setMode('reset'); setError(''); }} className="hover:text-white">Forgot password?</button>
-          </>
-        )}
-        {mode !== 'signin' && (
-          <button type="button" onClick={() => { setMode('signin'); setError(''); setInfo(''); }} className="hover:text-white">← Back to sign in</button>
-        )}
-      </div>
-    </Shell>
-  );
+  const [mode,setMode]=useState('signin'),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[info,setInfo]=useState('');
+  const run=async(fn)=>{setBusy(true);setError('');setInfo('');try{const result=await fn();if(result?.user)await onAuthSuccess?.();}catch(e){console.error('Auth error:',e);setError(friendlyError(e));}finally{setBusy(false);}};
+  const submit=(e)=>{e.preventDefault();run(async()=>{if(mode==='signin')return signInWithEmail(email,password);if(mode==='signup')return signUpWithEmail(email,password);await sendResetEmail(email);setInfo('If that email has an account, a reset link is on its way.');return null;});};
+  return <div className="auth-page"><div className="auth-backdrop"/>
+    <div className="auth-layout">
+      <section className="auth-showcase"><div className="auth-brand"><span>N</span><div><small>NINU GAMING</small><strong>ARCADE</strong></div></div>
+        <div className="auth-showcase-content"><div className="auth-eyebrow">PLAYER ACCOUNT SYSTEM</div><h2>One account.<br/><span>Three worlds.</span></h2><p>Keep your scores, cards, racing records, and player identity connected across the entire arcade.</p>
+          <div className="auth-feature-list"><div><b>01</b><span><strong>LIVE SCOREBOARD</strong><small>Your best scores follow your account.</small></span></div><div><b>02</b><span><strong>VERIFIED IDENTITY</strong><small>Your player name belongs to your account.</small></span></div><div><b>03</b><span><strong>GAME PROGRESSION</strong><small>Cards and Arcade Points stay linked.</small></span></div></div>
+        </div><div className="auth-foot">NINU GAMING ARCADE · ACCOUNT PORTAL</div>
+      </section>
+      <section className="auth-card-wrap">
+        <div className="auth-tabs">{['signin','signup','reset'].map(item=><button key={item} type="button" className={mode===item?'active':''} onClick={()=>{setMode(item);setError('');setInfo('');}}>{item==='signin'?'SIGN IN':item==='signup'?'CREATE':'RESET'}</button>)}</div>
+        {mode==='signin'&&<AuthPanel eyebrow="RETURNING PLAYER" title="Welcome back." subtitle="Enter your email and password to continue."><form onSubmit={submit}><label className="auth-label">EMAIL</label><input className={inputClass} type="email" required autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com"/><label className="auth-label">PASSWORD</label><input className={inputClass} type="password" required autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••"/><Message error={error} info={info}/><button className={primaryBtn} disabled={busy}>{busy?'SIGNING IN…':'ENTER ARCADE →'}</button></form><div className="auth-under"><span>EMAIL LOGIN</span><button type="button" onClick={()=>{setMode('reset');setError('');}}>Forgot password?</button></div></AuthPanel>}
+        {mode==='signup'&&<AuthPanel eyebrow="NEW PLAYER" title="Create your account." subtitle="Your account starts with a verified email, then a permanent player name."><form onSubmit={submit}><div className="auth-steps"><i className="on"/><i/><i/></div><label className="auth-label">EMAIL</label><input className={inputClass} type="email" required autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com"/><label className="auth-label">PASSWORD</label><input className={inputClass} type="password" required minLength={PASSWORD_MIN} autoComplete="new-password" value={password} onChange={e=>setPassword(e.target.value)} placeholder={`${PASSWORD_MIN}+ characters`}/><Message error={error} info={info}/><button className={primaryBtn} disabled={busy}>{busy?'CREATING…':'CREATE ACCOUNT →'}</button></form><div className="auth-note amber"><strong>📩 Verification required</strong> A verification email will be sent immediately after account creation.</div></AuthPanel>}
+        {mode==='reset'&&<AuthPanel eyebrow="ACCOUNT RECOVERY" title="Reset your password." subtitle="A reset link will be sent to your account email."><form onSubmit={submit}><label className="auth-label">EMAIL</label><input className={inputClass} type="email" required autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com"/><Message error={error} info={info}/><button className={primaryBtn} disabled={busy}>{busy?'SENDING…':'SEND RESET LINK'}</button></form><div className="auth-under"><button type="button" onClick={()=>setMode('signin')}>← Back to sign in</button></div></AuthPanel>}
+      </section>
+    </div>
+  </div>;
 }
 
-export function VerifyEmailScreen({ user, onRefresh }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [info, setInfo] = useState('');
-
-  const check = async () => {
-    setBusy(true);
-    setError('');
-    setInfo('');
-    try {
-      await onRefresh();
-      setInfo('Not verified yet. Click the link in your email first, then try again.');
-    } catch (e) {
-      setError(friendlyError(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const resend = async () => {
-    setError('');
-    setInfo('');
-    try {
-      await resendVerification();
-      setInfo('Verification email sent again.');
-    } catch (e) {
-      setError(friendlyError(e));
-    }
-  };
-
-  return (
-    <Shell title="Verify your email" subtitle={`We sent a link to ${user.email}. Open it, then come back here.`}>
-      <div className="rounded-lg border border-[#4a4a4a] bg-[#222] px-4 py-3 text-sm text-[#ddd]">
-        <div className="font-black text-white">⚠️ Check your Spam / Junk folder</div>
-        <p className="mt-1 text-[#aaa]">
-          Your verification email may be filtered into <span className="text-white font-bold">Spam, Junk, or Promotions</span>.
-          If you do not see it in your Inbox, check those folders and search for <span className="text-white font-bold">“verification”</span> or <span className="text-white font-bold">“Firebase”</span>.
-        </p>
-        <p className="mt-2 text-[#aaa]">Still nothing? Wait a few minutes, then click <span className="text-white font-bold">Resend email</span> below.</p>
-      </div>
-      <Message error={error} info={info} />
-      <button type="button" disabled={busy} onClick={check} className={primaryBtn}>{busy ? 'CHECKING…' : "I'VE VERIFIED MY EMAIL"}</button>
-      <button type="button" onClick={resend} className={ghostBtn}>Resend email</button>
-      <button type="button" onClick={signOutUser} className="text-sm text-[#999] hover:text-white">Use a different account</button>
-    </Shell>
-  );
+export function VerifyEmailScreen({ user,onRefresh }) {
+  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[info,setInfo]=useState('');
+  const check=async()=>{setBusy(true);setError('');setInfo('');try{await onRefresh();setInfo('Not verified yet. Click the link in your email first, then try again.');}catch(e){setError(friendlyError(e));}finally{setBusy(false);}};
+  const resend=async()=>{setError('');setInfo('');try{await resendVerification();setInfo('Verification email sent again.');}catch(e){setError(friendlyError(e));}};
+  return <div className="auth-page"><div className="auth-backdrop"/><div className="auth-single"><AuthPanel eyebrow="STEP 02 · EMAIL VERIFICATION" title="Check your inbox." subtitle={`We sent a verification link to ${user.email}. Open it, verify, then come back here.`}><div className="auth-steps"><i className="on"/><i className="on"/><i/></div><div className="verify-alert"><strong>⚠️ CHECK SPAM / JUNK / PROMOTIONS</strong><span>Your verification email may be filtered there instead of your Inbox. Search for <b>“verification”</b> or <b>“Firebase”</b> if you cannot find it.</span><small>Still nothing? Wait a few minutes, then click <b>Resend email</b>.</small></div><Message error={error} info={info}/><button type="button" disabled={busy} className={primaryBtn} onClick={check}>{busy?'CHECKING…':"I'VE VERIFIED MY EMAIL"}</button><button type="button" className={ghostBtn} onClick={resend}>RESEND EMAIL</button><button type="button" className="auth-link" onClick={signOutUser}>Use a different account</button></AuthPanel></div></div>;
 }
 
-export function ChooseUsernameScreen({ user, onDone }) {
-  const [name, setName] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-
-  const submit = async (e) => {
-    e.preventDefault();
-    const problem = validateUsername(name);
-    if (problem) {
-      setError(problem);
-      return;
-    }
-    setBusy(true);
-    setError('');
-    try {
-      await claimUsername(user, name);
-      await onDone();
-    } catch (err) {
-      setError(friendlyError(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Shell
-      title="Pick your player name"
-      subtitle={`This is your name on every leaderboard (${USERNAME_MIN}-${USERNAME_MAX} characters). It is permanent and belongs only to your account.`}
-    >
-      <form onSubmit={submit} className="space-y-3">
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value.slice(0, USERNAME_MAX))}
-          placeholder="Player name"
-          autoFocus
-          className={inputClass}
-        />
-        <Message error={error} />
-        <button type="submit" disabled={busy} className={primaryBtn}>{busy ? 'SAVING…' : 'CLAIM THIS NAME'}</button>
-      </form>
-      <button type="button" onClick={signOutUser} className="text-sm text-[#999] hover:text-white">Sign out</button>
-    </Shell>
-  );
+export function ChooseUsernameScreen({ user,onDone }) {
+  const [name,setName]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
+  const submit=async(e)=>{e.preventDefault();const problem=validateUsername(name);if(problem){setError(problem);return;}setBusy(true);setError('');try{await claimUsername(user,name);await onDone();}catch(err){setError(friendlyError(err));}finally{setBusy(false);}};
+  return <div className="auth-page"><div className="auth-backdrop"/><div className="auth-single"><AuthPanel eyebrow="STEP 03 · PLAYER IDENTITY" title="Claim your player name." subtitle={`This name will appear across every leaderboard. It is permanent and belongs only to your account.`}><div className="auth-steps"><i className="on"/><i className="on"/><i className="on"/></div><form onSubmit={submit}><label className="auth-label">PLAYER NAME</label><input className={inputClass} value={name} onChange={e=>setName(e.target.value.slice(0,USERNAME_MAX))} placeholder="NinuGaming999" autoFocus maxLength={USERNAME_MAX}/><Message error={error}/><button type="submit" disabled={busy} className={primaryBtn}>{busy?'SAVING…':'CLAIM NAME & ENTER →'}</button></form><div className="auth-note">3–16 characters · letters, numbers, spaces, - or _</div><button type="button" className="auth-link" onClick={signOutUser}>SIGN OUT</button></AuthPanel></div></div>;
 }
