@@ -1,116 +1,69 @@
 import { useEffect, useState } from 'react';
 import { getDatabase, getUserIdFromName } from '../utils/firebaseService';
 
-function GameCard({ title, description, accent, badge, onClick }) {
+function GameCard({ title, description, badge, accent, icon, stats, onPlay }) {
+  const [open, setOpen] = useState(false);
   return (
-    <button type="button" onClick={onClick} className="group text-left rounded-2xl border border-[#3D3D3D] bg-[#202020] p-5 hover:border-[#FF2E2E] hover:-translate-y-1 transition duration-200 shadow-xl">
-      <div className="flex items-center justify-between mb-4">
-        <span className={`text-xs font-black tracking-widest ${accent}`}>{badge}</span>
-        <span className="text-[#777] group-hover:text-white transition">PLAY →</span>
-      </div>
-      <h2 className="text-white text-2xl md:text-3xl font-black tracking-tight">{title}</h2>
-      <p className="text-[#BDBDBD] text-sm mt-2 leading-6">{description}</p>
-    </button>
+    <article className={`hub-game-card hub-${accent} ${open ? 'is-open' : ''}`}>
+      <button type="button" className="hub-card-hit" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        <div className="hub-card-top"><span>{badge}</span><b>{open ? 'CLOSE ↑' : 'DETAILS ↗'}</b></div>
+        <div className="hub-game-icon">{icon}</div>
+        <h2>{title}</h2><p>{description}</p>
+        <div className="hub-card-footer"><span>{open ? 'EXPANDED VIEW' : 'CLICK TO EXPAND'}</span><i>{open ? '−' : '+'}</i></div>
+      </button>
+      {open && <div className="hub-expanded">
+        <div className="hub-detail-copy"><span>GAME OVERVIEW</span><p>{stats.detail}</p></div>
+        <div className="hub-detail-stats">{stats.items.map(([label,value]) => <div key={label}><small>{label}</small><strong>{value}</strong></div>)}</div>
+        <button type="button" className="hub-play" onClick={onPlay}>LAUNCH {title.toUpperCase()} <span>→</span></button>
+      </div>}
+    </article>
   );
 }
 
-export default function GameHub({ playerName, onSignOut, onOpenArtifact, onOpenRacing, onOpenCards }) {
-  const [artifactBest, setArtifactBest] = useState(null);
-  const [racingBest, setRacingBest] = useState(null);
-
+export default function GameHub({ playerName, onSignOut, onOpenArtifact, onOpenRacing, onOpenCards, onOpenAccount }) {
+  const [stats, setStats] = useState({ artifact:null, racing:null, collection:0, spent:0 });
   useEffect(() => {
-    const id = getUserIdFromName(playerName);
-    if (!id) {
-      setArtifactBest(null);
-      setRacingBest(null);
-      return undefined;
-    }
-
-    let active = true;
-    const db = getDatabase();
+    const id=getUserIdFromName(playerName); if(!id) return undefined;
+    const db=getDatabase(); let active=true;
     Promise.all([
       db.ref(`leaderboard/${id}`).once('value'),
       db.ref(`racingLeaderboard/${id}`).once('value'),
-    ]).then(([artifactSnap, racingSnap]) => {
-      if (!active) return;
-      setArtifactBest(artifactSnap.val());
-      setRacingBest(racingSnap.val());
-    }).catch(() => {
-      if (!active) return;
-      setArtifactBest(null);
-      setRacingBest(null);
-    });
+      db.ref(`cardCollection/${id}`).once('value'),
+      db.ref(`cardCurrency/${id}/spent`).once('value'),
+    ]).then(([artifact,racing,collection,spent]) => {
+      if(!active) return;
+      setStats({ artifact:artifact.val(), racing:racing.val(), collection:Object.values(collection.val()||{}).filter(e=>Number(e?.count)>0).length, spent:Number(spent.val())||0 });
+    }).catch(()=>{});
+    return ()=>{active=false};
+  },[playerName]);
 
-    return () => { active = false; };
-  }, [playerName]);
-
-  const hasName = playerName.trim().length > 0;
-
-  return (
-    <div className="min-h-screen bg-[#121212] text-white">
-      <header className="border-b-2 border-[#FF2E2E] px-5 md:px-8 py-4 flex items-center justify-between gap-4">
-        <div>
-          <div className="text-xs md:text-sm text-[#FF2E2E] font-black tracking-[0.28em]">NINU GAMING ARCADE</div>
-          <h1 className="text-2xl md:text-4xl font-black tracking-tight">Choose Your Game</h1>
-        </div>
-        <div className="hidden md:block text-right text-xs text-[#777]">ONE NAME • TWO GAMES</div>
-      </header>
-
-      <main className="max-w-6xl mx-auto p-5 md:p-8">
-        <div className="rounded-2xl border border-[#333] bg-[#191919] p-5 mb-6">
-          <label className="block text-xs font-bold tracking-widest text-[#999] mb-2">SIGNED IN AS</label>
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-xl font-black truncate">{playerName}</div>
-            <button
-              type="button"
-              onClick={onSignOut}
-              className="shrink-0 text-sm text-white border border-[#555] rounded-lg px-3 py-1.5 hover:border-[#FF2E2E] transition"
-            >
-              Sign out
-            </button>
-          </div>
-          <p className="text-xs text-[#777] mt-2">Your account name is used across all games. Each game keeps its own leaderboard.</p>
-        </div>
-
-        <div className="grid md:grid-cols-3 gap-5">
-          <GameCard
-            title="Artifact Roll Simulator"
-            description="Roll a full Arlecchino artifact set, chase insane Melt Damage and climb the artifact-only leaderboard."
-            badge="GAME 01 • RNG"
-            accent="text-[#FF2E2E]"
-            onClick={onOpenArtifact}
-          />
-          <GameCard
-            title="Elementals"
-            description="Open 5-card elemental packs with points earned in the other games, collect 35 cards, and duel random opponents."
-            badge="GAME 03 • CARDS"
-            accent="text-[#19D3FF]"
-            onClick={onOpenCards}
-          />
-          <GameCard
-            title="Neon Mountain Racer"
-            description="Race a 7km neon mountain circuit in full 3D - 3 laps against AI or live 1v1, with drifting, boost and a proper leaderboard."
-            badge="GAME 02 • RACING"
-            accent="text-[#43D17A]"
-            onClick={onOpenRacing}
-          />
-        </div>
-
-        <section className="mt-6 grid md:grid-cols-3 gap-4">
-          <div className="rounded-xl border border-[#333] bg-[#191919] p-4">
-            <div className="text-xs text-[#777] font-bold tracking-widest">ARTIFACT BEST</div>
-            <div className="text-2xl font-black mt-1">{artifactBest ? Number(artifactBest.meltDamage || 0).toLocaleString() : '—'}</div>
-          </div>
-          <div className="rounded-xl border border-[#333] bg-[#191919] p-4">
-            <div className="text-xs text-[#777] font-bold tracking-widest">RACING BEST</div>
-            <div className="text-2xl font-black mt-1">{racingBest ? Number(racingBest.score || 0).toLocaleString() : '—'}</div>
-          </div>
-          <div className="rounded-xl border border-[#333] bg-[#191919] p-4">
-            <div className="text-xs text-[#777] font-bold tracking-widest">PLAYER</div>
-            <div className={`text-2xl font-black mt-1 truncate ${hasName ? 'text-white' : 'text-[#555]'}`}>{hasName ? playerName.trim() : 'Not set'}</div>
-          </div>
-        </section>
-      </main>
-    </div>
-  );
+  return <div className="hub-page">
+    <header className="hub-header"><div className="hub-shell hub-header-inner">
+      <div className="hub-brand"><span className="hub-mark">N</span><span><small>NINU GAMING</small><strong>ARCADE</strong></span></div>
+      <div className="hub-header-actions">
+        <button type="button" className="hub-account" onClick={onOpenAccount}><span className="hub-online" /> {playerName} <b>ACCOUNT ↗</b></button>
+        <button type="button" className="hub-signout" onClick={onSignOut}>SIGN OUT</button>
+      </div>
+    </div></header>
+    <main className="hub-shell hub-main">
+      <section className="hub-hero"><div><div className="hub-eyebrow">PLAYER HUB · {playerName.toUpperCase()}</div>
+        <h1>Choose your<br /><span>next world.</span></h1>
+        <p>Every section expands before you launch it. Inspect your records, understand each game, then jump straight into the action.</p>
+      </div><div className="hub-orbit"><div className="hub-orbit-ring ring-a"/><div className="hub-orbit-ring ring-b"/><div className="hub-orbit-core">N</div></div></section>
+      <section className="hub-summary">
+        <div><small>ARTIFACT BEST</small><strong>{stats.artifact?Number(stats.artifact.meltDamage||0).toLocaleString():'—'}</strong><span>MELT DAMAGE</span></div>
+        <div><small>RACING BEST</small><strong>{stats.racing?Number(stats.racing.score||0).toLocaleString():'—'}</strong><span>RACE SCORE</span></div>
+        <div><small>COLLECTION</small><strong>{stats.collection}/35</strong><span>ELEMENTAL CARDS</span></div>
+        <div><small>POINTS SPENT</small><strong>{stats.spent.toLocaleString()}</strong><span>ARCADE CURRENCY</span></div>
+      </section>
+      <div className="hub-section-head"><div><span>01 · THE ARCADE</span><h2>Pick a game.</h2></div><small>EXPAND · INSPECT · LAUNCH</small></div>
+      <section className="hub-games">
+        <GameCard title="Artifact Roll Simulator" description="Roll a complete Arlecchino artifact set and chase the most absurd Melt Damage your RNG can produce." badge="GAME 01 · RNG" accent="red" icon="✦" stats={{detail:'Five pieces, real stat rolls, live scoring, and a leaderboard that keeps only your best result.',items:[['SET','5 PIECES'],['FOCUS','CRIT + ATK'],['LEADERBOARD','LIVE']]}} onPlay={onOpenArtifact}/>
+        <GameCard title="Neon Mountain Racer" description="Drive the full 7 km mountain circuit with boost, drifting, AI opponents, and live 1v1 matchmaking." badge="GAME 02 · RACING" accent="green" icon="↗" stats={{detail:'Three laps, pace-based scoring, a racing leaderboard, and a real-time matchmaking path.',items:[['TRACK','7 KM'],['LAPS','3'],['MODE','AI / 1V1']]}} onPlay={onOpenRacing}/>
+        <GameCard title="Elementals" description="Use points earned elsewhere to open five-card packs, build your collection, and enter reaction-based duels." badge="GAME 03 · CARDS" accent="cyan" icon="◆" stats={{detail:'35 collectible cards, five-card packs, elemental reactions, and a random-opponent duel arena.',items:[['CARDS','35'],['PACK','5 CARDS'],['DUEL','REACTIONS']]}} onPlay={onOpenCards}/>
+      </section>
+      <button type="button" className="hub-control-banner" onClick={onOpenAccount}><span><small>ACCOUNT CONTROL CENTER</small><strong>Manage your profile, security, stats & data</strong></span><b>OPEN CONTROL CENTER →</b></button>
+      <footer className="hub-footer">NINU GAMING ARCADE · THREE WORLDS · ONE PLAYER IDENTITY</footer>
+    </main>
+  </div>;
 }
