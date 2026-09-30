@@ -21,7 +21,7 @@ export const ELEMENT_INFO = {
 };
 
 const CARD_NAMES = {
-  pyro: ['Ember Pup', 'Cinder Fox', 'Flame Drake', 'Blazewing', 'THE Goat'],
+  pyro: ['Ember Pup', 'Cinder Fox', 'Flame Drake', 'Pyro Archon', 'THE Goat'],
   hydro: ['Bubble Finch', 'Tide Otter', 'Raincaller', 'cuti', 'Ocean King'],
   cryo: ['Frost Cub', 'Snow Hare', 'Glacier Wolf', 'iceeeee', 'Momyyyyyyy'],
   electro: ['Spark Mouse', 'Volt Mantis', 'Storm Lynx', 'Marin Wifee', 'Ronovaaaa'],
