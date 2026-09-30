@@ -1,11 +1,11 @@
 export const RARITIES = ['common', 'rare', 'epic', 'legendary', 'mythic'];
 
 export const RARITY_INFO = {
-  common: { label: 'Common', color: '#a8b0ba', chance: 0.50 },
+  common: { label: 'Common', color: '#a8b0ba', chance: 0.60 },
   rare: { label: 'Rare', color: '#4fb0ff', chance: 0.30 },
-  epic: { label: 'Epic', color: '#b06bff', chance: 0.13 },
-  legendary: { label: 'Legendary', color: '#ffb84f', chance: 0.05 },
-  mythic: { label: 'Mythic', color: '#ff4f8b', chance: 0.02 },
+  epic: { label: 'Epic', color: '#b06bff', chance: 0.065 },
+  legendary: { label: 'Legendary', color: '#ffb84f', chance: 0.025 },
+  mythic: { label: 'Mythic', color: '#ff4f8b', chance: 0.01 },
 };
 
 export const ELEMENTS = ['pyro', 'hydro', 'cryo', 'electro', 'anemo', 'geo', 'dendro'];
