@@ -24,7 +24,7 @@ const CARD_NAMES = {
   pyro: ['Ember Pup', 'Cinder Fox', 'Flame Drake', 'Blazewing', 'THE Goat'],
   hydro: ['Bubble Finch', 'Tide Otter', 'Raincaller', 'cuti', 'Ocean King'],
   cryo: ['Frost Cub', 'Snow Hare', 'Glacier Wolf', 'Ice Raven', 'Frost Queen'],
-  electro: ['Spark Mouse', 'Volt Mantis', 'Storm Lynx', 'Thunder Drake', 'Tempest King'],
+  electro: ['Spark Mouse', 'Volt Mantis', 'Storm Lynx', 'Marin Wifee', 'Ronovaaaa'],
   anemo: ['Gale Finch', 'Breeze Fox', 'Sky Stalker', 'Cyclone Spirit', 'Wind Sovereign'],
   geo: ['Pebble Crab', 'Stone Ram', 'Quartz Golem', 'Mountain Beast', 'Geo Colossus'],
   dendro: ['Sprout Slime', 'Moss Boar', 'Vine Stalker', 'Bloom Serpent', 'Verdant Ancient'],
