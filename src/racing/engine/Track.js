@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { makeRoadTextures, makeDashTexture, makeEdgeGlowTexture, makeGlowTexture } from "./Graphics";
 
 function lerp(a,b,t){ return a+(b-a)*t; }
 function catmull(p0,p1,p2,p3,t){
@@ -117,27 +118,61 @@ export class MountainTrack{
     return best/n;
   }
   addRoad(){
+    const g=this.quality.gfx||{};
     const road=this.ribbonGeometry(this.samples,this.roadWidth,0.05);
-    const mesh=new THREE.Mesh(road,new THREE.MeshStandardMaterial({color:0x242a32,roughness:.93,metalness:.02}));
+    let roadMat;
+    if(g.roadTex){
+      // Procedural asphalt (grain, worn tire lanes, cracks, wet patches). One
+      // tile spans the road's width; the ribbon's v coordinate runs 0..1 over
+      // the whole lap, so repeat.y = lap length / tile length.
+      const {colorTex,roughTex}=makeRoadTextures(g.roadTex,g.anisotropy||2);
+      const rep=this.length/(this.roadWidth*2);
+      colorTex.repeat.set(1,rep);roughTex.repeat.set(1,rep);
+      roadMat=new THREE.MeshStandardMaterial({
+        map:colorTex,roughnessMap:roughTex,roughness:g.roadRough,metalness:.04,
+        color:new THREE.Color().setRGB(.16,.17,.2)
+      });
+    }else{
+      roadMat=new THREE.MeshStandardMaterial({color:0x242a32,roughness:.93,metalness:.02});
+    }
+    const mesh=new THREE.Mesh(road,roadMat);
     mesh.receiveShadow=true; this.scene.add(mesh);
+
+    // Dashed centre line (alpha-cutout texture, no blending cost).
     const center=this.ribbonGeometry(this.samples,0.17,0.14);
-    const line=new THREE.Mesh(center,new THREE.MeshBasicMaterial({color:0xeff7ff}));
+    const dash=makeDashTexture();dash.repeat.set(1,this.length/14);
+    const line=new THREE.Mesh(center,new THREE.MeshBasicMaterial({
+      map:dash,alphaTest:.5,toneMapped:false,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1
+    }));
     this.scene.add(line);
 
     const edgeL=this.ribbonGeometry(this.samples,.16,0.25,-this.roadWidth*.47);
     const edgeR=this.ribbonGeometry(this.samples,.16,0.25,this.roadWidth*.47);
-    const edgeMat=new THREE.MeshBasicMaterial({color:0x19d3ff});
+    const edgeMat=new THREE.MeshBasicMaterial({color:0x19d3ff,toneMapped:false});
     this.scene.add(new THREE.Mesh(edgeL,edgeMat),new THREE.Mesh(edgeR,edgeMat));
 
+    // Soft neon spill along both road edges (additive gradient ribbons).
+    if(g.edgeGlow){
+      const glowTex=makeEdgeGlowTexture();
+      const glowMat=new THREE.MeshBasicMaterial({
+        map:glowTex,color:0x19d3ff,transparent:true,opacity:.6,blending:THREE.AdditiveBlending,
+        depthWrite:false,toneMapped:false,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1
+      });
+      const gl=new THREE.Mesh(this.ribbonGeometry(this.samples,1.7,0.2,-this.roadWidth*.47),glowMat);
+      const gr=new THREE.Mesh(this.ribbonGeometry(this.samples,1.7,0.2,this.roadWidth*.47),glowMat);
+      gl.renderOrder=gr.renderOrder=2;
+      this.scene.add(gl,gr);
+    }
+
     const start=this.quadAt(.003,16,0.15);
-    const startMesh=new THREE.Mesh(start,new THREE.MeshBasicMaterial({color:0xffffff}));
+    const startMesh=new THREE.Mesh(start,new THREE.MeshBasicMaterial({color:0xffffff,toneMapped:false}));
     this.scene.add(startMesh);
 
     for(let i=0;i<7;i++){
       const t=.003+i*.06;
       const p=this.point(t),q=this.tangent(t),yaw=Math.atan2(q.x,q.z);
       const sign=i%2?1:-1;
-      const marker=new THREE.Mesh(new THREE.BoxGeometry(.22,.35,3.8),new THREE.MeshBasicMaterial({color:sign>0?0xff2e9c:0x19d3ff}));
+      const marker=new THREE.Mesh(new THREE.BoxGeometry(.22,.35,3.8),new THREE.MeshBasicMaterial({color:sign>0?0xff2e9c:0x19d3ff,toneMapped:false}));
       // Keep visual markers beside the road, never across the main racing line.
       const roadside=new THREE.Vector3(-q.z,0,q.x).normalize();
       marker.position.copy(p).addScaledVector(roadside,sign*(this.roadWidth*.72));
@@ -158,7 +193,7 @@ export class MountainTrack{
     const poleMat=new THREE.MeshStandardMaterial({color:0x1c2128,metalness:.6,roughness:.5});
     const armGeo=new THREE.BoxGeometry(1.6,.16,.16);
     const bulbGeo=new THREE.IcosahedronGeometry(.42,1);
-    const bulbMat=new THREE.MeshBasicMaterial({color:0xffffff});
+    const bulbMat=new THREE.MeshBasicMaterial({color:0xffffff,toneMapped:false});
     const pole=new THREE.InstancedMesh(poleGeo,poleMat,count);
     const arm=new THREE.InstancedMesh(armGeo,poleMat,count);
     const bulb=new THREE.InstancedMesh(bulbGeo,bulbMat,count);
@@ -166,6 +201,7 @@ export class MountainTrack{
     const m=new THREE.Matrix4(),pos=new THREE.Vector3(),quat=new THREE.Quaternion(),scl=new THREE.Vector3(1,1,1);
     const col=new THREE.Color();
     const offset=this.roadWidth*1.12;
+    const glowPos=new Float32Array(count*3),glowCol=new Float32Array(count*3);
     for(let i=0;i<count;i++){
       const t=(i*spacing)/this.length;
       const p=this.point(t),tan=this.tangent(t);
@@ -184,17 +220,34 @@ export class MountainTrack{
       pos.copy(base);pos.y+=5.4;pos.addScaledVector(side,-sign*1.6);
       m.compose(pos,quat,scl);bulb.setMatrixAt(i,m);
       bulb.setColorAt(i,col.set(sign>0?0xff2e9c:0x19d3ff));
+      glowPos[i*3]=pos.x;glowPos[i*3+1]=pos.y;glowPos[i*3+2]=pos.z;
+      glowCol[i*3]=col.r;glowCol[i*3+1]=col.g;glowCol[i*3+2]=col.b;
     }
     pole.instanceMatrix.needsUpdate=true;
     arm.instanceMatrix.needsUpdate=true;
     bulb.instanceMatrix.needsUpdate=true;
     if(bulb.instanceColor)bulb.instanceColor.needsUpdate=true;
     this.scene.add(pole,arm,bulb);
+    // One Points draw call = a soft neon halo around every lamp (fake bloom).
+    if((this.quality.gfx||{}).lampGlow){
+      const gg=new THREE.BufferGeometry();
+      gg.setAttribute("position",new THREE.BufferAttribute(glowPos,3));
+      gg.setAttribute("color",new THREE.BufferAttribute(glowCol,3));
+      const glow=new THREE.Points(gg,new THREE.PointsMaterial({
+        map:makeGlowTexture(64),size:9,sizeAttenuation:true,vertexColors:true,transparent:true,opacity:.85,
+        blending:THREE.AdditiveBlending,depthWrite:false,toneMapped:false
+      }));
+      glow.frustumCulled=false;glow.renderOrder=3;
+      this.scene.add(glow);
+    }
   }
   ribbonGeometry(samples,width,yOffset,lateralOffset=0){
+    // n+1 rows: the last row repeats the first but with v=1, so textures that
+    // tile along the lap don't smear across the closing segment.
     const verts=[],uvs=[];
     const n=samples.length;
-    for(let i=0;i<n;i++){
+    for(let r=0;r<=n;r++){
+      const i=r%n;
       const p=samples[i],prev=samples[(i-1+n)%n],next=samples[(i+1)%n];
       const t=next.clone().sub(prev).normalize();
       const side=new THREE.Vector3(-t.z,0,t.x).normalize();
@@ -202,11 +255,11 @@ export class MountainTrack{
       const right=p.clone().addScaledVector(side,-width).addScaledVector(side,lateralOffset);
       left.y+=yOffset; right.y+=yOffset;
       verts.push(left.x,left.y,left.z,right.x,right.y,right.z);
-      uvs.push(0,i/n,1,i/n);
+      uvs.push(0,r/n,1,r/n);
     }
     const indices=[];
     for(let i=0;i<n;i++){
-      const a=i*2,b=i*2+1,c=((i+1)%n)*2,d=((i+1)%n)*2+1;
+      const a=i*2,b=i*2+1,c=(i+1)*2,d=(i+1)*2+1;
       indices.push(a,c,b,b,c,d);
     }
     const g=new THREE.BufferGeometry();
@@ -249,13 +302,30 @@ export class MountainTrack{
     const trunkMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:1});
     const leafMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:1});
     const rockMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:1});
+    const gq=this.quality.gfx||{};
+    if(gq.windSway){
+      // Gentle wind: tips of the pine cones sway, base stays planted.
+      const timeU=this.quality.timeUniform||{value:0};
+      leafMat.onBeforeCompile=(sh)=>{
+        sh.uniforms.uTime=timeU;
+        sh.vertexShader=sh.vertexShader
+          .replace("#include <common>","#include <common>\nuniform float uTime;")
+          .replace("#include <begin_vertex>",`#include <begin_vertex>
+          #ifdef USE_INSTANCING
+            float ph=instanceMatrix[3].x*.07+instanceMatrix[3].z*.09;
+            float sw=position.y+.5;
+            transformed.x+=sin(uTime*1.7+ph)*.17*sw*sw;
+            transformed.z+=cos(uTime*1.3+ph*1.3)*.12*sw*sw;
+          #endif`);
+      };
+    }
     const trunkMesh=new THREE.InstancedMesh(trunkGeo,trunkMat,Math.max(1,this._treeTotal));
     const leafMesh=new THREE.InstancedMesh(leafGeo,leafMat,Math.max(1,this._treeTotal));
     const rockMesh=new THREE.InstancedMesh(rockGeo,rockMat,Math.max(1,this._rockTotal));
     // Small/numerous decoration casting shadows is expensive for little
     // visual payoff at driving speed - skip cast, keep receive so they
     // still sit believably in the road/mountain shadow.
-    for(const m of [trunkMesh,leafMesh,rockMesh]){m.castShadow=false;m.receiveShadow=true;m.count=0;this.scene.add(m);}
+    for(const m of [trunkMesh,leafMesh,rockMesh]){m.castShadow=!!gq.treeShadows;m.receiveShadow=true;m.count=0;this.scene.add(m);}
     return {trunkMesh,leafMesh,rockMesh,nextTree:0,nextRock:0};
   }
   buildDecorationBatch(start,count){
@@ -282,7 +352,11 @@ export class MountainTrack{
         scl.set(1,h*.58,1);
         m.compose(pos,quat,scl);
         leafMesh.setMatrixAt(idx,m);
-        leafMesh.setColorAt(idx,snowy?col.setHSL(.55,.25,.85):col.setHSL(.4,.5,.16+((d.seed%9)*.012)));
+        const v=this.quality.gfx?.treeVariety||1,r=((d.seed*37)%100)/100;
+        if(snowy) leafMesh.setColorAt(idx,col.setHSL(.55,.25,.85));
+        else if(v>=2&&r<.16) leafMesh.setColorAt(idx,col.setHSL(v>=3&&r<.08?.78:.5,.6,.2+r));  // neon-tinted teal / violet pines
+        else if(v>=2) leafMesh.setColorAt(idx,col.setHSL(.33+r*.12,.42+r*.2,.14+((d.seed%9)*.014)));
+        else leafMesh.setColorAt(idx,col.setHSL(.4,.5,.16+((d.seed%9)*.012)));
       }else{
         const s=1+((d.seed*17)%60)/20;
         pos.copy(base);pos.y+=s*.45;
@@ -291,7 +365,8 @@ export class MountainTrack{
         m.compose(pos,quat,scl);
         const idx=this.decorInstances.nextRock++;
         rockMesh.setMatrixAt(idx,m);
-        rockMesh.setColorAt(idx,snowy?col.setHSL(.58,.15,.82):col.setHSL(.58,.08,.28+((d.seed%6)*.02)));
+        const rv=(this.quality.gfx?.treeVariety||1)>=2?((d.seed*29)%100)/100:.5;
+        rockMesh.setColorAt(idx,snowy?col.setHSL(.58,.15,.82):col.setHSL(.58+(rv-.5)*.1,.08+rv*.06,.26+((d.seed%6)*.025)));
       }
     }
     trunkMesh.count=this.decorInstances.nextTree;

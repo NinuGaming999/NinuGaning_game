@@ -16,8 +16,10 @@ function smoothNoise(x,z,freq){
 }
 
 export class WorldBuilder{
-  constructor(scene,track,quality={shadows:true,shadowMapSize:2048,decorScale:1}){
+  constructor(scene,track,quality={shadows:true,shadowMapSize:2048,decorScale:1},fx=null){
     this.scene=scene;this.track=track;this.quality=quality;this.batches=[];
+    this.fx=fx; // GraphicsFX (sky/env/shadow-follow) - optional so the old call shape still works
+    this.gfx=quality.gfx||{};
   }
   addBase(){
     this.buildTerrain();
@@ -167,29 +169,50 @@ export class WorldBuilder{
       }
       return true;
     };
-    const mountainMat=new THREE.MeshStandardMaterial({color:0x111c25,roughness:1});
-    const ridgeGeo=new THREE.ConeGeometry(1,1,6);
-    const count=40;
-    const ridge=new THREE.InstancedMesh(ridgeGeo,mountainMat,count);
-    const m=new THREE.Matrix4(),pos=new THREE.Vector3(),quat=new THREE.Quaternion(),scl=new THREE.Vector3();
-    for(let i=0;i<count;i++){
-      const a=i/count*Math.PI*2,h=60+(i%8)*14,w=80+(i%5)*20;
-      let r=340+(i%4)*55;
-      const minClear=w*.5+90;
-      for(let tries=0;tries<10;tries++){
-        const x=Math.cos(a)*r,z=Math.sin(a)*r;
-        if(clearOf(x,z,minClear))break;
-        r+=45;
+    // 6 height rings (not 1) so vertex colors can paint a jagged snow line
+    // near the peak; flat shading gives the faceted low-poly alpine look.
+    const ridgeGeo=new THREE.ConeGeometry(1,1,6,6);
+    {
+      const pos=ridgeGeo.attributes.position,col=new Float32Array(pos.count*3);
+      const rock=new THREE.Color(0x182430),snow=new THREE.Color(0xc9dcf0),c=new THREE.Color();
+      for(let i=0;i<pos.count;i++){
+        const x=pos.getX(i),y=pos.getY(i),z=pos.getZ(i);
+        const t=y+.5; // 0 base .. 1 peak
+        const n=Math.sin(x*91.7+z*47.3+y*13.1)*43758.5453;
+        const jag=(n-Math.floor(n)-.5)*.16;
+        const k=THREE.MathUtils.smoothstep(t,.56+jag,.68+jag);
+        c.copy(rock).lerp(snow,k);
+        col[i*3]=c.r;col[i*3+1]=c.g;col[i*3+2]=c.b;
       }
-      pos.set(Math.cos(a)*r,h/2-4,Math.sin(a)*r);
-      quat.setFromAxisAngle(new THREE.Vector3(0,1,0),a*.7);
-      scl.set(w,h,w);
-      m.compose(pos,quat,scl);
-      ridge.setMatrixAt(i,m);
+      ridgeGeo.setAttribute("color",new THREE.BufferAttribute(col,3));
     }
-    ridge.instanceMatrix.needsUpdate=true;
-    ridge.receiveShadow=true;
-    this.scene.add(ridge);
+    const mountainMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,flatShading:true});
+    const m=new THREE.Matrix4(),pos=new THREE.Vector3(),quat=new THREE.Quaternion(),scl=new THREE.Vector3();
+    const layer=(count,r0,rStep,hBase,hVar,wBase,wVar,yDrop)=>{
+      if(count<=0)return;
+      const mesh=new THREE.InstancedMesh(ridgeGeo,mountainMat,count);
+      for(let i=0;i<count;i++){
+        const a=i/count*Math.PI*2+(r0>500?.07:0),h=hBase+(i%8)*hVar,w=wBase+(i%5)*wVar;
+        let r=r0+(i%4)*rStep;
+        const minClear=w*.5+90;
+        for(let tries=0;tries<12;tries++){
+          const x=Math.cos(a)*r,z=Math.sin(a)*r;
+          if(clearOf(x,z,minClear))break;
+          r+=45;
+        }
+        pos.set(Math.cos(a)*r,h/2-yDrop,Math.sin(a)*r);
+        quat.setFromAxisAngle(new THREE.Vector3(0,1,0),a*.7);
+        scl.set(w,h,w);
+        m.compose(pos,quat,scl);
+        mesh.setMatrixAt(i,m);
+      }
+      mesh.instanceMatrix.needsUpdate=true;
+      mesh.receiveShadow=true;
+      this.scene.add(mesh);
+    };
+    layer(40,340,55,60,14,80,20,4);
+    // Second, taller range far behind - fog melts it into the horizon glow.
+    layer(this.gfx.farMountains||0,760,55,130,16,150,26,8);
   }
 
   // A tall Burj Khalifa-style tapered/tiered skyscraper landmark, with a
@@ -265,7 +288,7 @@ export class WorldBuilder{
 
     // Glowing sign band wrapped around the widest tier, one screen per side.
     const signTex=this.buildSignTexture();
-    const signMat=new THREE.MeshBasicMaterial({map:signTex,transparent:true,depthWrite:false});
+    const signMat=new THREE.MeshBasicMaterial({map:signTex,transparent:true,depthWrite:false,toneMapped:false});
     const bandY=tiers[0].h*.62;
     const bandW=tiers[0].w+.3,bandH=tiers[0].h*.42;
     const offsets=[
@@ -341,16 +364,18 @@ export class WorldBuilder{
   }
 
   buildLighting(){
-    // A single shadow-casting sun (this used to be duplicated by a second
-    // directional light + hemisphere light added in main.js's bootLights(),
-    // which doubled both scene brightness and the shadow-map render cost
-    // for no visual benefit - that duplicate has been removed).
-    const sun=new THREE.DirectionalLight(0xffffff,2.2);sun.position.set(260,420,180);
+    // A single shadow-casting key light (cool moonlight). With an environment
+    // map present the hemisphere fill is lowered since IBL already supplies
+    // ambient light - otherwise the scene would double-brighten.
+    const sun=new THREE.DirectionalLight(0xcfdcff,this.gfx.sun??2.2);sun.position.set(260,420,180);
     sun.castShadow=this.quality.shadows;
     const size=this.quality.shadowMapSize||2048;
     sun.shadow.mapSize.set(size,size);sun.shadow.camera.near=1;sun.shadow.camera.far=1200;
     this.scene.add(sun);
-    this.scene.add(new THREE.HemisphereLight(0xa8d8ff,0x08120e,1.5));
+    this.sun=sun;
+    this.scene.add(new THREE.HemisphereLight(0xa8d8ff,0x08120e,this.gfx.hemi??1.5));
+    // Tight, car-following shadow box (see GraphicsFX.setupSun).
+    this.fx?.setupSun(sun);
   }
 
   buildAtmosphere(){
@@ -360,18 +385,6 @@ export class WorldBuilder{
     );
     mist.rotation.x=-Math.PI/2;mist.position.y=95;this.scene.add(mist);
 
-    // Cheap night-sky detail: a few hundred points, one draw call.
-    const starCount=500;
-    const starPos=new Float32Array(starCount*3);
-    for(let i=0;i<starCount;i++){
-      const a=Math.random()*Math.PI*2,el=Math.random()*.5+.08,r=1000;
-      starPos[i*3]=Math.cos(a)*r*Math.cos(el);
-      starPos[i*3+1]=Math.sin(el)*r+120;
-      starPos[i*3+2]=Math.sin(a)*r*Math.cos(el);
-    }
-    const starGeo=new THREE.BufferGeometry();
-    starGeo.setAttribute("position",new THREE.BufferAttribute(starPos,3));
-    const stars=new THREE.Points(starGeo,new THREE.PointsMaterial({color:0xdfeeff,size:1.6,sizeAttenuation:false,transparent:true,opacity:.75}));
-    this.scene.add(stars);
+    // Stars, moon and the horizon glow now live in GraphicsFX's sky dome.
   }
 }

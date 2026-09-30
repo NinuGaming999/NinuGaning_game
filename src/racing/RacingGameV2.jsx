@@ -6,6 +6,7 @@ import { createCar, CarPhysics, TOTAL_LAPS } from './engine/Car';
 import { AIController } from './engine/AI';
 import { InputManager } from './engine/Input';
 import { ChaseCamera } from './engine/Camera';
+import { GraphicsFX, GFX_KEYS, GFX_LABELS, getSavedGfx, resolveQuality, saveGfx } from './engine/Graphics';
 import {
   createOrJoinDeterministicMatch,
   finishMatch,
@@ -48,6 +49,8 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
   const posRef = useRef(null);
   const timeRef = useRef(null);
   const mapRef = useRef(null);
+  const vignetteRef = useRef(null);
+  const fpsRef = useRef(null);
 
   const engine = useRef(null); // holds all the three.js/game-loop state for this mount
   const raceState = useRef(null); // { near, over, hits, lastPlace, lastNear, lastOffTrack, raceClock }
@@ -61,6 +64,8 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
   const [rows, setRows] = useState([]);
   const [matchId, setMatchId] = useState(null);
   const [touch] = useState(isTouchDevice);
+  const [gfx, setGfx] = useState(() => getSavedGfx(isTouchDevice()));
+  const pickGfx = useCallback((key) => { setGfx(key); saveGfx(key); }, []);
 
   const uid = useMemo(() => getUserIdFromName(name), [name]);
 
@@ -72,41 +77,43 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
     let cancelled = false;
     let raf = 0;
 
-    const renderer = new THREE.WebGLRenderer({ canvas: canvasRef.current, antialias: !touch, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, touch ? 1 : 1.5));
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.shadowMap.enabled = !touch;
+    // Graphics preset (High FPS / Balanced / Better Quality) picked in the menu.
+    const quality = resolveQuality(gfx, touch);
+    quality.timeUniform = { value: 0 }; // shared clock for shader effects (tree sway)
+
+    const renderer = new THREE.WebGLRenderer({ canvas: canvasRef.current, antialias: quality.gfx.antialias, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality.gfx.pixelRatioMax));
+    renderer.shadowMap.enabled = quality.shadows;
     renderer.shadowMap.type = THREE.PCFShadowMap;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x050910);
-    scene.fog = new THREE.FogExp2(0x050910, 0.00145);
     const camera = new THREE.PerspectiveCamera(64, 1, 0.1, touch ? 1500 : 1600);
 
-    const quality = touch
-      ? { shadows: false, shadowMapSize: 1024, decorScale: 0.55 }
-      : { shadows: true, shadowMapSize: 2048, decorScale: 1 };
+    // Sky, tone mapping, fog, environment reflections, glow/particles, camera FX.
+    const fx = new GraphicsFX(renderer, scene, camera, quality, { vignette: vignetteRef.current });
 
     const track = new MountainTrack(scene, quality);
-    const world = new WorldBuilder(scene, track, quality);
+    const world = new WorldBuilder(scene, track, quality, fx);
     world.addBase();
 
     const input = new InputManager(renderer.domElement);
     const chase = new ChaseCamera(camera, track, input);
     input.cameraProxy = chase;
 
-    const playerMesh = createCar('#19d3ff', name.trim() || 'Racer');
+    const playerMesh = createCar('#19d3ff', name.trim() || 'Racer', quality.gfx);
     scene.add(playerMesh);
     const player = new CarPhysics(playerMesh, track);
     player.reset(0);
+    fx.addCar(playerMesh, player, true);
 
     const ai = [];
     if (mode === 'single') {
       for (let i = 0; i < 5; i += 1) {
-        const mesh = createCar(AI_COLORS[i % AI_COLORS.length], `AI-${i + 1}`);
+        const mesh = createCar(AI_COLORS[i % AI_COLORS.length], `AI-${i + 1}`, quality.gfx);
         scene.add(mesh);
         const controller = new AIController(mesh, track, i + 1);
         controller.init();
+        fx.addCar(mesh, controller);
         ai.push(controller);
       }
     }
@@ -114,9 +121,11 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
     // Opponent car for multiplayer, filled in as state comes over Firebase.
     let opponentMesh = null;
     if (mode === 'multi') {
-      opponentMesh = createCar('#ff914d', 'Opponent');
+      opponentMesh = createCar('#ff914d', 'Opponent', quality.gfx);
       opponentMesh.visible = false;
       scene.add(opponentMesh);
+      // Remote car: no local physics, so lights/glow only (no smoke).
+      fx.addCar(opponentMesh, { speed: 0, lateralSlip: 0, braking: false, vel: null }, false);
     }
 
     raceState.current = { near: 0, over: 0, hits: 0, lastPlace: 1, lastNearAt: 0, lastCollideAt: 0, raceClock: 0, finished: false };
@@ -167,12 +176,14 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
       renderer.setSize(w, h, false);
       camera.aspect = w / Math.max(1, h);
       camera.updateProjectionMatrix();
+      fx.resize();
     }
     resize();
     window.addEventListener('resize', resize);
 
     const clock = new THREE.Clock();
     let lastPublish = 0;
+    let fpsFrames = 0, fpsClock = 0;
 
     function place() {
       const others = mode === 'single'
@@ -271,7 +282,10 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
             const otherMass = opp.physics ? opp.physics.mass : player.mass;
             player.applyImpulse(normal, otherVel, otherMass, .35);
             if (opp.physics) opp.physics.applyImpulse(normal.clone().negate(), player.vel, player.mass, .35);
-            if (now - rs.lastCollideAt > 450) { rs.hits += 1; rs.lastCollideAt = now; navigator.vibrate?.(40); }
+            if (now - rs.lastCollideAt > 450) {
+              rs.hits += 1; rs.lastCollideAt = now; navigator.vibrate?.(40);
+              fx.burst((playerMesh.position.x + om.position.x) / 2, (playerMesh.position.y + om.position.y) / 2, (playerMesh.position.z + om.position.z) / 2, Math.min(1.6, 0.5 + Math.abs(player.speed) / 50));
+            }
           }
         }
         // AI-vs-AI collisions (single player only - only 5 cars, cheap).
@@ -325,9 +339,18 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
         }
       }
 
+      fx.beforeCamera();
       chase.update(dt, player);
+      fx.afterCamera(player);
+      fx.update(dt, player, input.state);
       renderer.render(scene, camera);
       drawMinimap();
+
+      fpsFrames += 1; fpsClock += dt;
+      if (fpsClock >= 0.5) {
+        if (fpsRef.current) fpsRef.current.textContent = `${Math.round(fpsFrames / fpsClock)} FPS`;
+        fpsFrames = 0; fpsClock = 0;
+      }
     }
     loop();
 
@@ -340,6 +363,7 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
       window.removeEventListener('resize', resize);
       ro.disconnect();
       input.destroy();
+      fx.dispose();
       renderer.dispose();
       scene.traverse((obj) => {
         obj.geometry?.dispose?.();
@@ -417,8 +441,13 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
       {phase === 'race' && (
         <div ref={mountRef} className="racing-race-shell absolute inset-0">
           <canvas ref={canvasRef} className="w-full h-full block" />
+          <div
+            ref={vignetteRef}
+            className="absolute inset-0 pointer-events-none"
+            style={{ opacity: 0.15, background: 'radial-gradient(ellipse at center, transparent 52%, rgba(2,4,14,.8) 100%)' }}
+          />
           <div className="absolute top-3 left-3 right-3 flex justify-between items-start pointer-events-none font-bold tracking-wide text-sm">
-            <div>NEON MOUNTAIN RACER</div>
+            <div>NEON MOUNTAIN RACER <span ref={fpsRef} className="ml-2 text-xs font-normal text-white/50" /></div>
             <div className="flex gap-3">
               <span ref={lapRef}>LAP 1/{TOTAL_LAPS}</span>
               <span ref={posRef}>1ST</span>
@@ -467,6 +496,22 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
             placeholder="Your name"
             className="bg-white/10 border border-white/30 rounded px-4 py-2 text-center w-64"
           />
+          <div className="w-full max-w-md z-10">
+            <div className="text-center text-[11px] tracking-[0.2em] text-white/50 mb-2">GRAPHICS</div>
+            <div className="grid grid-cols-3 gap-2">
+              {GFX_KEYS.map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => pickGfx(k)}
+                  className={`leading-tight px-1 py-2 text-xs font-bold border ${gfx === k ? 'bg-[#19d3ff] text-black border-[#19d3ff]' : 'border-white/25 text-white/80'}`}
+                >
+                  {GFX_LABELS[k].title}
+                  <span className="block text-[10px] font-normal opacity-70">{GFX_LABELS[k].desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
           {status && <div className="text-[#ff914d] text-sm">{status}</div>}
           <button onClick={single} className="w-64 py-3 rounded-lg bg-[#19d3ff] text-black font-bold">SINGLE PLAYER</button>
           <button onClick={queue} className="w-64 py-3 rounded-lg border-2 border-[#19d3ff] font-bold">FIND 1v1 RACE</button>

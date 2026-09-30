@@ -1,6 +1,25 @@
 import * as THREE from "three";
 
-export function createCar(color,name){
+let _glowTex=null;
+function glowTexture(){
+  if(_glowTex)return _glowTex;
+  const c=document.createElement("canvas");c.width=c.height=64;
+  const g=c.getContext("2d");
+  const grad=g.createRadialGradient(32,32,0,32,32,32);
+  grad.addColorStop(0,"rgba(255,255,255,1)");
+  grad.addColorStop(.25,"rgba(255,255,255,.55)");
+  grad.addColorStop(.6,"rgba(255,255,255,.14)");
+  grad.addColorStop(1,"rgba(255,255,255,0)");
+  g.fillStyle=grad;g.fillRect(0,0,64,64);
+  _glowTex=new THREE.CanvasTexture(c);
+  _glowTex.colorSpace=THREE.SRGBColorSpace;
+  return _glowTex;
+}
+
+// `gfx` is the resolved graphics preset (see Graphics.js). Everything added
+// for looks - glow sprites, underglow, headlight beams, brake-light response -
+// is gated by it so the High FPS preset stays cheap.
+export function createCar(color,name,gfx={}){
   const root=new THREE.Group();
   const paint=new THREE.MeshStandardMaterial({color:new THREE.Color(color),metalness:.55,roughness:.25});
   const dark=new THREE.MeshStandardMaterial({color:0x121212,metalness:.3,roughness:.6});
@@ -11,7 +30,7 @@ export function createCar(color,name){
   const hood=new THREE.Mesh(new THREE.BoxGeometry(1.9,.28,1.1),paint);
   hood.position.set(0,1.0,1.72);hood.castShadow=true;
   const cabin=new THREE.Mesh(new THREE.BoxGeometry(1.62,.6,1.75),new THREE.MeshStandardMaterial({color:0x111a22,metalness:.1,roughness:.1,transparent:true,opacity:.95}));
-  cabin.position.set(0,1.46,-.05);
+  cabin.position.set(0,1.46,-.05);cabin.castShadow=true;
   root.add(body,hood,cabin);
 
   const bumper=new THREE.Mesh(new THREE.BoxGeometry(2,.2,.25),dark);
@@ -26,10 +45,13 @@ export function createCar(color,name){
     rim.rotation.z=Math.PI/2;rim.position.set(x,.58,z);root.add(rim);
   }
 
+  // Lights use toneMapped:false so they stay vivid neon instead of being
+  // desaturated by the ACES tone mapping the rest of the scene goes through.
+  const tailMat=new THREE.MeshBasicMaterial({color:0xff2b2b,toneMapped:false});
   for(const x of [-.72,.72]){
-    const head=new THREE.Mesh(new THREE.BoxGeometry(.32,.16,.1),new THREE.MeshBasicMaterial({color:0xfff6d8}));
+    const head=new THREE.Mesh(new THREE.BoxGeometry(.32,.16,.1),new THREE.MeshBasicMaterial({color:0xfff6d8,toneMapped:false}));
     head.position.set(x,.98,2.16);root.add(head);
-    const tail=new THREE.Mesh(new THREE.BoxGeometry(.3,.16,.08),new THREE.MeshBasicMaterial({color:0xff2b2b}));
+    const tail=new THREE.Mesh(new THREE.BoxGeometry(.3,.16,.08),tailMat);
     tail.position.set(x,.98,-2.14);root.add(tail);
   }
 
@@ -39,7 +61,7 @@ export function createCar(color,name){
   }
 
   const wing=new THREE.Mesh(new THREE.BoxGeometry(1.5,.08,.5),dark);
-  wing.position.set(0,1.55,-1.95);root.add(wing);
+  wing.position.set(0,1.55,-1.95);wing.castShadow=true;root.add(wing);
   for(const x of [-.55,.55]){
     const strut=new THREE.Mesh(new THREE.BoxGeometry(.08,.4,.08),dark);
     strut.position.set(x,1.32,-1.95);root.add(strut);
@@ -48,10 +70,59 @@ export function createCar(color,name){
   const exhaust=new THREE.Mesh(new THREE.CylinderGeometry(.09,.09,.35,8),chrome);
   exhaust.rotation.x=Math.PI/2;exhaust.position.set(.6,.55,-2.18);root.add(exhaust);
 
-  const glow=new THREE.Mesh(new THREE.BoxGeometry(1.7,.08,.08),new THREE.MeshBasicMaterial({color:new THREE.Color(color)}));
+  const glow=new THREE.Mesh(new THREE.BoxGeometry(1.7,.08,.08),new THREE.MeshBasicMaterial({color:new THREE.Color(color),toneMapped:false}));
   glow.position.set(0,1.0,-2.16);root.add(glow);
 
-  root.userData={name,color,progress:0,distance:0,lap:1,speed:0,finished:false,yaw:0};
+  const fx={brake:0,tailMat,tailGlow:null,headGlow:null,headBeams:null,underglow:null};
+
+  // Glow halos (one Points draw call each): soft bloom-like neon around the
+  // head/tail lights. Tail glow brightens + swells when braking.
+  if(gfx.carGlow){
+    const tex=glowTexture();
+    const mk=(positions,c,size,opacity)=>{
+      const g=new THREE.BufferGeometry();
+      g.setAttribute("position",new THREE.Float32BufferAttribute(positions,3));
+      const p=new THREE.Points(g,new THREE.PointsMaterial({map:tex,color:c,size,sizeAttenuation:true,transparent:true,opacity,blending:THREE.AdditiveBlending,depthWrite:false,toneMapped:false}));
+      p.frustumCulled=false;
+      return p;
+    };
+    fx.headGlow=mk([-.72,.98,2.3,.72,.98,2.3],0xfff0c8,2.0,.3);
+    fx.tailGlow=mk([-.72,.98,-2.3,.72,.98,-2.3],0xff2b2b,2.4,.35);
+    root.add(fx.headGlow,fx.tailGlow);
+  }
+
+  // Neon underglow on the road (flat additive quad in the car's colour).
+  if(gfx.underglow){
+    const g=new THREE.PlaneGeometry(3.6,6.4);g.rotateX(-Math.PI/2);
+    const m=new THREE.Mesh(g,new THREE.MeshBasicMaterial({map:glowTexture(),color:new THREE.Color(color).multiplyScalar(1.4),transparent:true,opacity:.75,blending:THREE.AdditiveBlending,depthWrite:false,toneMapped:false}));
+    m.position.y=-.55;m.renderOrder=3;
+    root.add(m);fx.underglow=m;
+  }
+
+  // Headlight beams: two additive cones that fade to black along their length
+  // (additive blending makes black = invisible, so no alpha sorting needed).
+  if(gfx.headBeams){
+    const len=17,rad=3.2;
+    const beams=new THREE.Group();
+    for(const x of [-.72,.72]){
+      const cg=new THREE.ConeGeometry(rad,len,14,1,true);
+      cg.translate(0,-len/2,0);cg.rotateX(-Math.PI/2);cg.rotateX(.09);
+      const pos=cg.attributes.position,col=new Float32Array(pos.count*3);
+      const tint=new THREE.Color(0xffefc2);
+      for(let i=0;i<pos.count;i++){
+        const t=THREE.MathUtils.clamp(pos.getZ(i)/len,0,1);
+        const a=Math.pow(1-t,2.2)*.085*Math.min(1,t*6+.15);
+        col[i*3]=tint.r*a;col[i*3+1]=tint.g*a;col[i*3+2]=tint.b*a;
+      }
+      cg.setAttribute("color",new THREE.BufferAttribute(col,3));
+      const m=new THREE.Mesh(cg,new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,toneMapped:false,fog:true}));
+      m.position.set(x,.98,2.2);m.renderOrder=4;
+      beams.add(m);
+    }
+    root.add(beams);fx.headBeams=beams;
+  }
+
+  root.userData={name,color,progress:0,distance:0,lap:1,speed:0,finished:false,yaw:0,fx};
   return root;
 }
 
@@ -73,6 +144,7 @@ export class CarPhysics{
     this.angularVel=0;       // rad/s - real rotational inertia, not an instant turn rate
     this.vel=new THREE.Vector3(); // actual world-space velocity (m/s); can point anywhere, not just "forward"
     this.speed=0;             // derived scalar (forward component of vel) kept for HUD/network/etc.
+    this.braking=false;       // true while the brake is applied at speed (drives brake-light FX)
     this.lateralSlip=0;       // derived scalar (sideways component of vel) - how much the car is sliding
     this.offTrack=false;
     this.spinTimer=0;
@@ -142,6 +214,7 @@ export class CarPhysics{
 
     const throttle=input.gas?1:0;
     const brake=input.brake?1:0;
+    this.braking=!!brake&&this.vel.dot(fwd)>1;
     const hand=input.handbrake?1:0;
     const boost=input.boost&&vf>18?1:0;
     // Driving off the paved road, or freshly hit, loosens grip and engine

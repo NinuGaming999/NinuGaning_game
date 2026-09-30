@@ -47,6 +47,8 @@ export class AIController{
   get lap(){return this.physics.lap;}
   get progress(){return this.physics.progress;}
   get speed(){return this.physics.speed;}
+  get lateralSlip(){return this.physics.lateralSlip;}
+  get braking(){return this.physics.braking;}
 
   curvatureAhead(d){
     const eps=3/this.track.samples.length;
