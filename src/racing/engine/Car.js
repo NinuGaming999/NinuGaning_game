@@ -153,17 +153,17 @@ export class CarPhysics{
     this._refPoint=new THREE.Vector3();
 
     // Tuning constants for the force model.
-    this.enginePower=13000;     // N, forward drive force at full throttle (top speed ~300 km/h)
-    this.topSpeedRef=95;        // m/s, engine thrust fades toward this (see update())
-    this.downforce=2.1;         // N per (m/s)^2 - aero grip that grows with speed so fast corners stay drivable
-    this.brakeForce=15500;      // N, opposing current forward motion
+    this.enginePower=18000;     // N, forward drive force at full throttle (top speed ~300 km/h)
+    this.topSpeedRef=115;        // m/s, engine thrust fades toward this (see update())
+    this.downforce=3.0;         // N per (m/s)^2 - aero grip that grows with speed so fast corners stay drivable
+    this.brakeForce=21000;      // N, opposing current forward motion
     this.reverseEnginePower=4200;
     this.reverseTopSpeed=15;
     this.boostForce=5200;
     this.dragLinear=16;         // N per m/s - rolling resistance
     this.dragQuad=.62;          // N per (m/s)^2 - air resistance
-    this.gripStiffness=6200;    // N per m/s of lateral slip, before clamping to maxGripForce
-    this.maxGripForce=15800;    // N - the cap that lets a fast, sharp turn genuinely break traction
+    this.gripStiffness=8600;    // N per m/s of lateral slip, before clamping to maxGripForce
+    this.maxGripForce=22000;    // N - the cap that lets a fast, sharp turn genuinely break traction
     this.steerTorque=5.4;       // rad/s^2 at full steering input
     this.angularDamping=5.2;    // 1/s
   }

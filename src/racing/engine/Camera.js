@@ -23,8 +23,11 @@ export class ChaseCamera{
       desired=p.clone().add(back);
       desired.y+=6+Math.sin(pitch)*5;
     }else{
-      desired=p.clone().addScaledVector(carForward,-11.5);
-      desired.y+=5.8;
+      // At speed the camera trails further back and sits lower, which
+      // stretches the road ahead and makes the ground race past faster.
+      const sf=THREE.MathUtils.clamp((Math.abs(car.speed)-12)/78,0,1);
+      desired=p.clone().addScaledVector(carForward,-(11.5+sf*4.5));
+      desired.y+=5.8-sf*1.5;
     }
     this.camera.position.lerp(desired,1-Math.pow(.0008,dt));
 
@@ -36,7 +39,8 @@ export class ChaseCamera{
     }else{
       lookDir=new THREE.Vector3(Math.sin(this.orbitYaw),0,Math.cos(this.orbitYaw));
     }
-    const lookAhead=p.clone().addScaledVector(lookDir,18);
+    const lsf=THREE.MathUtils.clamp((Math.abs(car.speed)-12)/78,0,1);
+    const lookAhead=p.clone().addScaledVector(lookDir,18+lsf*16);
     lookAhead.y+=1.0;
     this.target.lerp(lookAhead,1-Math.pow(.0007,dt));
     this.camera.lookAt(this.target);

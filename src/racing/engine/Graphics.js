@@ -31,7 +31,7 @@ const TABLE = {
     stars: 350, moon: true, farMountains: 0,
     lampGlow: true, carGlow: true, underglow: false, headBeams: false, edgeGlow: false,
     smoke: 48, sparks: 40,
-    speedStreaks: 0, shake: 0.5, fovBoost: 10, vignette: true,
+    speedStreaks: 40, shake: 0.7, fovBoost: 16, vignette: true,
     windSway: false, treeVariety: 1,
   },
   balanced: {
@@ -48,7 +48,7 @@ const TABLE = {
     stars: 700, moon: true, farMountains: 22,
     lampGlow: true, carGlow: true, underglow: true, headBeams: true, edgeGlow: true,
     smoke: 140, sparks: 90,
-    speedStreaks: 44, shake: 1, fovBoost: 14, vignette: true,
+    speedStreaks: 80, shake: 1.2, fovBoost: 22, vignette: true,
     windSway: true, treeVariety: 2,
   },
   quality: {
@@ -65,7 +65,7 @@ const TABLE = {
     stars: 1400, moon: true, farMountains: 34,
     lampGlow: true, carGlow: true, underglow: true, headBeams: true, edgeGlow: true,
     smoke: 300, sparks: 160,
-    speedStreaks: 90, shake: 1.2, fovBoost: 18, vignette: true,
+    speedStreaks: 130, shake: 1.5, fovBoost: 26, vignette: true,
     windSway: true, treeVariety: 3,
   },
 };
@@ -622,7 +622,8 @@ export class GraphicsFX {
 
     // ---- camera: speed-based FOV, shake, streaks, vignette ----
     const speed = Math.max(0, player?.speed || 0);
-    const sf = THREE.MathUtils.clamp((speed - 20) / 55, 0, 1);
+    const sf = THREE.MathUtils.clamp((speed - 12) / 78, 0, 1);
+    this.speedFactor = sf; // shared with the chase camera (pull-back / look-ahead)
     const fovTarget = this.baseFov + this.g.fovBoost * sf;
     this.fov += (fovTarget - this.fov) * Math.min(1, dt * 4);
     if (Math.abs(this.camera.fov - this.fov) > 0.01) {
@@ -630,7 +631,7 @@ export class GraphicsFX {
       this.camera.updateProjectionMatrix();
     }
     if (this.streaks) {
-      const len = 1.5 + sf * 9;
+      const len = 2 + sf * 30;
       const arr = this.streaks.geometry.attributes.position.array;
       const mv = speed * dt * 1.15;
       for (let i = 0; i < this.streakN; i += 1) {
@@ -645,7 +646,7 @@ export class GraphicsFX {
         arr[i * 6 + 3] = s.x; arr[i * 6 + 4] = s.y; arr[i * 6 + 5] = s.z - len;
       }
       this.streaks.geometry.attributes.position.needsUpdate = true;
-      this.streakMat.opacity = sf * 0.5;
+      this.streakMat.opacity = Math.min(.85, sf * 0.95);
       this.streaks.visible = sf > 0.02;
     }
     if (this.hud.vignette) {
@@ -659,8 +660,8 @@ export class GraphicsFX {
   beforeCamera() { this.camera.position.sub(this.shake); }
   afterCamera(player) {
     const speed = Math.max(0, player?.speed || 0);
-    const sf = THREE.MathUtils.clamp((speed - 35) / 45, 0, 1);
-    const amp = 0.06 * sf * this.g.shake;
+    const sf = THREE.MathUtils.clamp((speed - 30) / 55, 0, 1);
+    const amp = 0.1 * sf * this.g.shake;
     this.shake.set((Math.random() - 0.5) * amp, (Math.random() - 0.5) * amp, (Math.random() - 0.5) * amp);
     this.camera.position.add(this.shake);
   }

@@ -49,7 +49,7 @@ function speedProfile(track,phys){
   }
   // Backward pass (twice around so the loop seam is handled): you can only
   // arrive at a corner as fast as you can still brake down for it.
-  const aBrake=9.5; // m/s^2, comfortably under the real brake force
+  const aBrake=12; // m/s^2, comfortably under the real brake force
   for(let pass=0;pass<2;pass++){
     for(let i=n*2-1;i>=0;i--){
       const a=i%n,b=(i+1)%n;
@@ -208,8 +208,17 @@ export class AIController{
     // Steering authority fades with speed in CarPhysics, so the gain must
     // not be a fixed number or the car would be twitchy at 300 km/h.
     const gain=THREE.MathUtils.clamp(2.4*(1-Math.min(speed,90)/90*.45),1.3,2.4);
+    // Cross-track correction: pure "aim at a point ahead" steering leaves a
+    // steady sideways offset on long fast curves (the car drifts a few
+    // metres wide at 250+ km/h without ever "feeling" wrong). Feed the real
+    // sideways error from the racing line back into the steering so the
+    // car holds its line at any speed.
+    const cNow=this.track.point(pos),tNow=this.track.tangent(pos);
+    const sideNow=new THREE.Vector3(-tNow.z,0,tNow.x);
+    const xErr=(p.mesh.position.x-cNow.x)*sideNow.x+(p.mesh.position.z-cNow.z)*sideNow.z-this.laneOffset*laneFade;
+    const xCorr=THREE.MathUtils.clamp(xErr*.045,-.4,.4);
     const input={
-      steer:THREE.MathUtils.clamp((diff*gain-p.angularVel*.6)*slipEase,-1,1),
+      steer:THREE.MathUtils.clamp((diff*gain-p.angularVel*.6+xCorr)*slipEase,-1,1),
       gas:unstuck?Math.abs(diff)<.9:!recovering&&slip<6&&p.speed<targetSpeed,
       brake:!unstuck&&(recovering||p.speed>targetSpeed+2.5||slip>7),
       boost:false,handbrake:false,

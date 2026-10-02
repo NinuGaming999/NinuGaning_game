@@ -199,6 +199,7 @@ export class MountainTrack{
       marker.position.y+=1.0; marker.rotation.y=yaw; this.scene.add(marker);
     }
     this.addStreetLamps();
+    this.addRoadsidePosts();
   }
   // Neon-styled street lamps lining the road (fits the game's established
   // cyan/pink accent palette better than plain white light poles).
@@ -260,6 +261,38 @@ export class MountainTrack{
       glow.frustumCulled=false;glow.renderOrder=3;
       this.scene.add(glow);
     }
+  }
+  // Close, evenly spaced glowing posts right at the road edge. Speed is
+  // judged by how fast nearby objects sweep past the camera, and until now
+  // everything near the road (lamps every 110m, trees set well back) was too
+  // far/sparse for 250+ km/h to register - these pass every ~0.04s at full
+  // speed. One InstancedMesh = a single draw call for the whole circuit.
+  addRoadsidePosts(){
+    const spacing=9;
+    const count=Math.max(1,Math.floor(this.length/spacing));
+    const geo=new THREE.BoxGeometry(.24,1.25,.24);
+    const mat=new THREE.MeshBasicMaterial({color:0xffffff,toneMapped:false});
+    const mesh=new THREE.InstancedMesh(geo,mat,count*2);
+    const m=new THREE.Matrix4(),pos=new THREE.Vector3(),quat=new THREE.Quaternion(),scl=new THREE.Vector3(1,1,1),col=new THREE.Color();
+    const off=this.roadWidth*.69;
+    let k=0;
+    for(let i=0;i<count;i++){
+      const t=(i*spacing)/this.length;
+      const p=this.point(t),tan=this.tangent(t);
+      const side=new THREE.Vector3(-tan.z,0,tan.x);
+      quat.setFromAxisAngle(new THREE.Vector3(0,1,0),Math.atan2(tan.x,tan.z));
+      for(const sign of [-1,1]){
+        pos.copy(p).addScaledVector(side,sign*off);pos.y+=.62;
+        m.compose(pos,quat,scl);mesh.setMatrixAt(k,m);
+        // every 4th post is brighter white so the rhythm is easy to read
+        mesh.setColorAt(k,col.set(i%4===0?0xffffff:(sign>0?0xff2e9c:0x19d3ff)));
+        k+=1;
+      }
+    }
+    mesh.instanceMatrix.needsUpdate=true;
+    if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;
+    mesh.frustumCulled=false;
+    this.scene.add(mesh);
   }
   ribbonGeometry(samples,width,yOffset,lateralOffset=0){
     // n+1 rows: the last row repeats the first but with v=1, so textures that
