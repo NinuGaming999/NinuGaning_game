@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  completeRedirectSignIn,
   onAuthChange,
   readUsername,
   refreshCurrentUser,
@@ -17,25 +16,29 @@ export function useAuth() {
       setState(SIGNED_OUT);
       return;
     }
+
     let username = '';
     try {
       username = await readUsername(user.uid);
     } catch {
       username = '';
     }
-    setState({ loading: false, user, verified: !!user.emailVerified, username });
+
+    setState({
+      loading: false,
+      user,
+      verified: !!user.emailVerified,
+      username,
+    });
   }, []);
 
   useEffect(() => {
     let active = true;
-    completeRedirectSignIn().then((user) => {
-      if (active && user) {
-        load(user);
-      }
-    });
+
     const unsub = onAuthChange((user) => {
       if (active) load(user);
     });
+
     return () => {
       active = false;
       unsub();
