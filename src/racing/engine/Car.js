@@ -139,6 +139,8 @@ export class CarPhysics{
   constructor(mesh,track){
     this.mesh=mesh;this.track=track;
     this.progress=0;this.lap=1;this.distance=0;this.finished=false;
+    this.trackPos=0;         // exact (sub-sample) position on the circuit, 0..1; what the AI steers by
+    this._lastFine=0;
     this.mass=1250;
     this.yaw=0;              // body heading (steering points the car this way)
     this.angularVel=0;       // rad/s - real rotational inertia, not an instant turn rate
@@ -151,7 +153,9 @@ export class CarPhysics{
     this._refPoint=new THREE.Vector3();
 
     // Tuning constants for the force model.
-    this.enginePower=9400;      // N, forward drive force at full throttle
+    this.enginePower=13000;     // N, forward drive force at full throttle (top speed ~300 km/h)
+    this.topSpeedRef=95;        // m/s, engine thrust fades toward this (see update())
+    this.downforce=2.1;         // N per (m/s)^2 - aero grip that grows with speed so fast corners stay drivable
     this.brakeForce=15500;      // N, opposing current forward motion
     this.reverseEnginePower=4200;
     this.reverseTopSpeed=15;
@@ -178,6 +182,7 @@ export class CarPhysics{
     this.lateralSlip=0;
     this.mesh.position.copy(p);this.mesh.position.y+=.65;this.mesh.rotation.y=this.yaw;
     this._refPoint.copy(p);
+    this.trackPos=((raw%1)+1)%1;this._lastFine=this.trackPos;
     this.offTrack=false;
     this.spinTimer=0;
   }
@@ -227,7 +232,7 @@ export class CarPhysics{
     // like a real engine losing thrust as RPM climbs, instead of a hard
     // speed cap.
     let engineF=0;
-    if(throttle)engineF+=this.enginePower*gripMul*Math.max(.08,1-Math.max(vf,0)/78*.62);
+    if(throttle)engineF+=this.enginePower*gripMul*Math.max(.08,1-Math.max(vf,0)/this.topSpeedRef*.62);
     if(brake){
       if(vf>.6)engineF-=this.brakeForce;
       else engineF-=this.reverseEnginePower*Math.max(0,1-Math.max(-vf,0)/this.reverseTopSpeed);
@@ -246,7 +251,7 @@ export class CarPhysics{
     // a maximum - this cap is what lets a hard, fast turn genuinely
     // overwhelm the tires and slide instead of grip being infinitely
     // strong.
-    const maxGrip=this.maxGripForce*gripMul;
+    const maxGrip=(this.maxGripForce+this.downforce*speedMag*speedMag)*gripMul;
     const lateralF=THREE.MathUtils.clamp(-this.gripStiffness*vs,-maxGrip,maxGrip);
     force.addScaledVector(side,lateralF);
 
@@ -277,7 +282,6 @@ export class CarPhysics{
     this.angularVel*=Math.max(0,1-this.angularDamping*dt);
     this.yaw+=this.angularVel*dt;
 
-    const oldPos=this.mesh.position.clone();
     this.mesh.position.addScaledVector(this.vel,dt);
 
     // Find where we are on the circuit BEFORE updating race progress.
@@ -311,21 +315,27 @@ export class CarPhysics{
     this.speed=this.vel.dot(fwd);
     this.lateralSlip=vs; // public: how much the car is currently sliding sideways relative to its heading
 
-    // IMPORTANT: race progress follows actual movement direction.
-    // A car turned around and driven with W therefore goes BACK around the
-    // track and loses progress instead of magically continuing race-forward.
-    const moved=this.mesh.position.clone().sub(oldPos);
-    const tangent=this.track.tangent(nearest);
-    const signedDistance=moved.x*tangent.x+moved.z*tangent.z;
-    const signedProgress=signedDistance/this.track.length;
-    let newProgress=this.progress+signedProgress;
+    // Race progress follows the car's REAL position on the circuit (exact
+    // projection onto the road centerline), so it can never drift away
+    // from where the car physically is. The old version integrated
+    // "XZ movement / 3D track length" every frame, which under-counted on
+    // climbs and slides and slowly desynced from the true position - the
+    // AI then aimed at a point at/behind itself and spun around. Driving
+    // backwards still correctly loses progress because the projected
+    // position moves backwards along the road.
+    const fine=this.track.nearestProgressFine(this.mesh.position,this.trackPos);
+    let dProg=fine-this._lastFine;
+    dProg-=Math.round(dProg); // wrap across the start/finish line
+    if(Math.abs(dProg)>.03)dProg=0; // a search jump, not real movement
+    this._lastFine=fine;this.trackPos=fine;
+    let newProgress=this.progress+dProg;
 
-    if(signedProgress>0){
+    if(dProg>0){
       if(newProgress>=1){
         newProgress-=1;
         this.lap++;
       }
-    }else if(signedProgress<0){
+    }else if(dProg<0){
       if(newProgress<0){
         if(this.lap<=1){
           // Guard against reversing back across the start/finish line on

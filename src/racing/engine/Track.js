@@ -117,6 +117,26 @@ export class MountainTrack{
     }
     return best/n;
   }
+  // Like nearestProgress(), but refined to a point ON the road segment
+  // instead of snapping to the closest ~5m sample. Used for race progress
+  // and by the AI so their idea of "where am I on the track" is exact and
+  // can never drift away from where the car physically is.
+  nearestProgressFine(pos,guess=0){
+    const n=this.samples.length;
+    const base=Math.round(this.nearestProgress(pos,guess)*n)%n;
+    let bestT=base,bestD=Infinity;
+    for(const seg of [(base-1+n)%n,base]){
+      const a=this.samples[seg],b=this.samples[(seg+1)%n];
+      const abx=b.x-a.x,aby=b.y-a.y,abz=b.z-a.z;
+      const len2=abx*abx+aby*aby+abz*abz||1;
+      let f=((pos.x-a.x)*abx+(pos.y-a.y)*aby+(pos.z-a.z)*abz)/len2;
+      f=Math.max(0,Math.min(1,f));
+      const dx=a.x+abx*f-pos.x,dy=a.y+aby*f-pos.y,dz=a.z+abz*f-pos.z;
+      const d=dx*dx+dy*dy+dz*dz;
+      if(d<bestD){bestD=d;bestT=seg+f;}
+    }
+    return (((bestT/n)%1)+1)%1;
+  }
   addRoad(){
     const g=this.quality.gfx||{};
     const road=this.ribbonGeometry(this.samples,this.roadWidth,0.05);
