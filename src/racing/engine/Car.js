@@ -150,6 +150,7 @@ export class CarPhysics{
     this.lateralSlip=0;       // derived scalar (sideways component of vel) - how much the car is sliding
     this.offTrack=false;
     this.spinTimer=0;
+    this.draft=0;            // 0..1 slipstream tow from a car just ahead (cuts air drag)
     this._refPoint=new THREE.Vector3();
 
     // Tuning constants for the force model.
@@ -245,7 +246,7 @@ export class CarPhysics{
     // bleeds off too, not just forward speed.
     const speedMag=this.vel.length();
     force.addScaledVector(this.vel,-this.dragLinear);
-    if(speedMag>1e-4)force.addScaledVector(this.vel,-this.dragQuad*speedMag);
+    if(speedMag>1e-4)force.addScaledVector(this.vel,-this.dragQuad*(1-.36*this.draft)*speedMag);
 
     // Tire grip: a spring-like force resisting sideways slip, clamped to
     // a maximum - this cap is what lets a hard, fast turn genuinely
@@ -366,3 +367,26 @@ export class CarPhysics{
   }
 }
 export const TOTAL_LAPS=3;
+
+// Slipstream (drafting): a car running close behind another one, roughly in
+// its line, punches through a pocket of disturbed air and loses a chunk of
+// its air drag - so it gains speed on the car ahead and can pull out to pass.
+// This is the physical reason real races have overtaking on straights, and
+// it applies to the player and every AI equally. `cars` are CarPhysics.
+export function applySlipstream(cars,dt=1/60){
+  for(const a of cars){
+    const fx=Math.sin(a.yaw),fz=Math.cos(a.yaw);
+    let best=0;
+    for(const b of cars){
+      if(a===b)continue;
+      const dx=b.mesh.position.x-a.mesh.position.x,dz=b.mesh.position.z-a.mesh.position.z;
+      const along=dx*fx+dz*fz;
+      if(along<4||along>44)continue;
+      const lat=Math.abs(dx*fz-dz*fx);
+      if(lat>3)continue;
+      const k=(1-(along-4)/40)*(1-lat/3);
+      if(k>best)best=k;
+    }
+    a.draft+=(best-a.draft)*Math.min(1,dt*5);
+  }
+}

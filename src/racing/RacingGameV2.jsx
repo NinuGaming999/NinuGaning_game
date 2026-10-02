@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { MountainTrack } from './engine/Track';
 import { WorldBuilder } from './engine/World';
-import { createCar, CarPhysics, TOTAL_LAPS } from './engine/Car';
+import { createCar, CarPhysics, TOTAL_LAPS, applySlipstream } from './engine/Car';
 import { AIController } from './engine/AI';
 import { InputManager } from './engine/Input';
 import { ChaseCamera } from './engine/Camera';
@@ -117,6 +117,10 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
         ai.push(controller);
       }
     }
+
+    // Everyone on the track (human first) - AIs read this to follow, pass and
+    // avoid each other, and slipstream is computed across it.
+    const field = [player, ...ai.map((a) => a.physics)];
 
     // Opponent car for multiplayer, filled in as state comes over Firebase.
     let opponentMesh = null;
@@ -242,9 +246,10 @@ export default function RacingGameV2({ initialPlayerName, onBack }) {
 
       if (!rs.finished) {
         rs.raceClock += dt;
+        if (mode === 'single') applySlipstream(field, dt);
         player.update(dt, input.state);
 
-        if (mode === 'single') ai.forEach((a) => a.update(dt));
+        if (mode === 'single') ai.forEach((a) => a.update(dt, field));
 
         // Near-miss + overtake tracking, and real, mutual car-to-car
         // collisions: both sides get a genuine momentum-conserving
