@@ -1,14 +1,10 @@
 import { auth, getDatabase, getUserIdFromName } from './firebaseService';
 
-const fb = window.firebase;
 const db = getDatabase();
 
 export const USERNAME_MIN = 3;
 export const USERNAME_MAX = 16;
 export const PASSWORD_MIN = 8;
-
-const googleProvider = new fb.auth.GoogleAuthProvider();
-googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 // ---------- friendly errors ----------
 
@@ -18,13 +14,10 @@ const ERROR_TEXT = {
   'auth/user-not-found': 'Wrong email or password.',
   'auth/wrong-password': 'Wrong email or password.',
   'auth/invalid-credential': 'Wrong email or password.',
-  'auth/email-already-in-use': 'An account with this email already exists. Try signing in, or use Google.',
+  'auth/email-already-in-use': 'An account with this email already exists. Try signing in.',
   'auth/weak-password': `Password must be at least ${PASSWORD_MIN} characters.`,
   'auth/too-many-requests': 'Too many attempts. Wait a few minutes and try again.',
   'auth/network-request-failed': 'Network problem. Check your connection and try again.',
-  'auth/popup-closed-by-user': 'Sign-in window was closed before finishing.',
-  'auth/cancelled-popup-request': 'Sign-in was cancelled.',
-  'auth/account-exists-with-different-credential': 'An account already exists with this email using a password. Please sign in with your email and password below.',
   'auth/unauthorized-domain': 'This website address is not authorized in Firebase (Authentication → Settings → Authorized domains).',
   'auth/operation-not-allowed': 'This sign-in method is not enabled in Firebase (Authentication → Sign-in method).',
 };
@@ -46,31 +39,11 @@ export function onAuthChange(callback) {
   return auth.onAuthStateChanged(callback);
 }
 
-export async function signInWithGoogle() {
-  try {
-    return await auth.signInWithPopup(googleProvider);
-  } catch (error) {
-    console.error('Google signInWithPopup error:', error);
-    // Some mobile browsers block popups; fall back to a full-page redirect.
-    if (error?.code === 'auth/popup-blocked' || error?.code === 'auth/operation-not-supported-in-this-environment') {
-      return auth.signInWithRedirect(googleProvider);
-    }
-    throw error;
-  }
-}
-
-export async function completeRedirectSignIn() {
-  try {
-    const cred = await auth.getRedirectResult();
-    return cred?.user || null;
-  } catch (error) {
-    console.error('Redirect sign-in error:', error);
-    return null;
-  }
-}
-
 export async function signUpWithEmail(email, password) {
-  if (String(password).length < PASSWORD_MIN) throw userError(`Password must be at least ${PASSWORD_MIN} characters.`);
+  if (String(password).length < PASSWORD_MIN) {
+    throw userError(`Password must be at least ${PASSWORD_MIN} characters.`);
+  }
+
   const cred = await auth.createUserWithEmailAndPassword(String(email).trim(), password);
   await cred.user.sendEmailVerification();
   return cred.user;
@@ -90,10 +63,11 @@ export function resendVerification() {
 }
 
 // Re-reads the account and refreshes the ID token so the database rules see
-// email_verified = true right after the player clicks the link in their email.
+// email_verified = true right after the player clicks the verification link.
 export async function refreshCurrentUser() {
   const user = auth.currentUser;
   if (!user) return null;
+
   await user.reload();
   await user.getIdToken(true);
   return auth.currentUser;
@@ -111,12 +85,15 @@ export function normalizeUsername(raw) {
 
 export function validateUsername(raw) {
   const name = normalizeUsername(raw);
+
   if (name.length < USERNAME_MIN || name.length > USERNAME_MAX) {
     return `Username must be ${USERNAME_MIN}-${USERNAME_MAX} characters.`;
   }
+
   if (!/^[\p{L}\p{N} _-]+$/u.test(name)) {
     return 'Use letters, numbers, spaces, - or _ only.';
   }
+
   return '';
 }
 
@@ -132,8 +109,7 @@ export async function isUsernameFree(raw) {
 }
 
 // Claims a username for this account. The first account to claim a name owns
-// it forever; the database rules stop anyone else from writing that name's
-// records. Safe to retry if an earlier attempt stopped half-way.
+// it forever; database rules stop other accounts from writing that name's records.
 export async function claimUsername(user, raw) {
   const problem = validateUsername(raw);
   if (problem) throw userError(problem);
@@ -143,7 +119,9 @@ export async function claimUsername(user, raw) {
   const claimRef = db.ref(`usernames/${key}`);
 
   const existing = (await claimRef.once('value')).val();
-  if (existing && existing !== user.uid) throw userError('That username is already taken.');
+  if (existing && existing !== user.uid) {
+    throw userError('That username is already taken.');
+  }
 
   if (!existing) {
     try {
@@ -155,14 +133,22 @@ export async function claimUsername(user, raw) {
 
   try {
     const profile = (await db.ref(`users/${user.uid}`).once('value')).val() || {};
+
     if (profile.usernameKey && profile.usernameKey !== key) {
       throw userError('This account already has a username.');
     }
-    if (!profile.usernameKey) await db.ref(`users/${user.uid}/usernameKey`).set(key);
-    if (!profile.username) await db.ref(`users/${user.uid}/username`).set(name);
+
+    if (!profile.usernameKey) {
+      await db.ref(`users/${user.uid}/usernameKey`).set(key);
+    }
+
+    if (!profile.username) {
+      await db.ref(`users/${user.uid}/username`).set(name);
+    }
   } catch (error) {
     if (error?.userMessage) throw error;
     throw userError('Could not save your username. Please try again.');
   }
+
   return name;
 }
