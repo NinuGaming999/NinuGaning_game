@@ -1,4 +1,4 @@
-import { useCallback, useState, Suspense, lazy } from 'react';
+import { useCallback, useEffect, useState, Suspense, lazy } from 'react';
 import Desktop from './components/Desktop';
 import Mobile from './components/Mobile';
 import GameHub from './components/GameHub';
@@ -20,6 +20,15 @@ import AccountCenter from './components/AccountCenter';
 
 const ROLL_BUTTON_LOCK_MS = 2000;
 const REVEAL_DELAY_MS = 300;
+
+const VALID_SCREENS = new Set(['hub', 'account', 'artifact', 'cards', 'racing']);
+
+function getScreenFromHash() {
+  if (typeof window === 'undefined') return 'hub';
+
+  const value = window.location.hash.replace(/^#\/?/, '');
+  return VALID_SCREENS.has(value) ? value : 'hub';
+}
 
 function sanitizeName(raw) {
   return raw.replace(/[\n\r"']/g, '').trim().slice(0, 32);
@@ -123,12 +132,32 @@ function FullScreenMessage({ children }) {
 export default function App() {
   const isMobile = useResponsive();
   const auth = useAuth();
-  const [screen, setScreen] = useState('hub');
+  const [screen, setScreenState] = useState(getScreenFromHash);
+
+  // Keep the current screen in the URL so refreshes preserve the game/page.
+  // Hash routing is used because it works on Vercel without a server rewrite.
+  useEffect(() => {
+    const handleHashChange = () => setScreenState(getScreenFromHash());
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  const setScreen = useCallback((nextScreen) => {
+    const target = VALID_SCREENS.has(nextScreen) ? nextScreen : 'hub';
+    const targetHash = target === 'hub' ? '' : `#/${target}`;
+
+    if (window.location.hash === targetHash) {
+      setScreenState(target);
+      return;
+    }
+
+    window.location.hash = targetHash;
+  }, []);
 
   const handleSignOut = useCallback(async () => {
     setScreen('hub');
     await signOutUser();
-  }, []);
+  }, [setScreen]);
 
   let content;
   if (auth.loading) {
@@ -165,6 +194,7 @@ function AppScreen({ screen, isMobile, playerName, setPlayerName, setScreen, onS
   if (screen === 'account') {
     return <AccountCenter user={authUser} playerName={playerName} onBack={() => setScreen('hub')} onSignOut={onSignOut} />;
   }
+
   if (screen === 'artifact') {
     return (
       <ArtifactGame
