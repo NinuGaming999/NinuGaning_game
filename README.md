@@ -1,152 +1,260 @@
 # NINU Gaming Arcade
 
-This repository contains two browser games that share the same site and Firebase project:
+A browser-based gaming hub built with React, Firebase Realtime Database, and Three.js.
 
-1. **Artifact Roll Simulator** — Arlecchino artifact RNG with its own leaderboard.
-2. **Infinite Rush** — arcade infinite-road racing with single-player records and 2-player browser multiplayer.
+The arcade currently contains three games that share one verified player account:
 
-## Leaderboards are separate
+1. **Artifact Roll Simulator** — roll a five-piece Arlecchino artifact set, calculate damage, and compete on a live Melt Damage leaderboard.
+2. **Neon Mountain Racer** — a 3D mountain racing game with AI opponents, vehicle physics, graphics presets, mobile controls, and a Firebase-powered 1v1 mode.
+3. **Elementals** — collect 35 elemental cards, spend Arcade Points on packs, and fight reaction-based duels.
 
-Artifact scores live under `leaderboard/{userId}`.
+## Tech stack
 
-Racing scores live under `racingLeaderboard/{userId}`.
+- React 18
+- Vite
+- Tailwind CSS
+- Three.js
+- Firebase Authentication
+- Firebase Realtime Database
+- GitHub Actions
+- Vercel
 
-They never compete with or overwrite each other. Both use the same deterministic username ID system: trimmed, lowercase names map to one Firebase-safe ID, so the same name always maps to the same record.
-
-For artifacts, one name stores only the highest Melt Damage. For racing, one name stores only the highest racing score.
-
-## Infinite Rush
-
-Infinite Rush is designed to work on desktop and phone browsers.
-
-### Single player
-
-- Endless procedural highway
-- Three-lane arcade steering
-- Progressive traffic difficulty
-- NPC cars with different speeds and vehicle types
-- NPC lane-switching with visible `SWITCH` indicators
-- Near misses and overtakes
-- Combo scoring
-- Boost meter
-- Collision damage / vehicle health
-- Personal high score saved to the separate racing leaderboard
-- 20 km challenge cap for a long record run while retaining the endless-road presentation
-
-### Multiplayer
-
-- 2-player matchmaking queue
-- Both players join the same deterministic match room
-- Both clients receive the same road seed, so the generated highway/traffic pattern is reproducible
-- Automatic countdown once two racers are queued
-- Live opponent position/distance synchronization through Firebase Realtime Database
-- Car-to-car pushing when racers occupy nearby lanes
-- Winner determined by the first racer to finish the challenge or by race-ending crash state
-- Disconnect/error states are surfaced in the race UI
-
-### Controls
-
-Desktop:
-
-- `A` / `Left Arrow` — steer left
-- `D` / `Right Arrow` — steer right
-- `Space` — brake
-- `Shift` — boost
-
-Phone:
-
-- Large touch left/right buttons
-- Brake button
-- Boost button
-
-The racing game intentionally keeps the gameplay canvas fullscreen and puts the HUD around the edges so it remains readable on stream.
-
-## Accounts and login
-
-The whole arcade sits behind Firebase Authentication (free tier): **Google sign-in** and **email + password** (email must be verified).
-
-After the first sign-in each player claims a permanent **username** (3-16 characters). The first account to claim a name owns it, and the database rules only let that account write the leaderboard, queue, live-roll and card records stored under that name.
+## Project structure
 
 ```text
-usernames/{nameKey}      -> uid of the owner (write once, publicly readable per key)
-users/{uid}/username     -> display name (private to the owner)
-users/{uid}/usernameKey  -> the nameKey this account owns
+src/
+├── App.jsx
+├── cardgame/
+│   ├── CardGame.jsx
+│   ├── cardService.js
+│   └── cards.js
+├── components/
+│   ├── AccountCenter.jsx
+│   ├── AuthScreen.jsx
+│   ├── GameHub.jsx
+│   └── ...
+├── hooks/
+│   ├── useAuth.js
+│   ├── useLeaderboard.js
+│   └── ...
+├── racing/
+│   ├── RacingGameV2.jsx
+│   └── engine/
+│       ├── AI.js
+│       ├── Camera.js
+│       ├── Car.js
+│       ├── Graphics.js
+│       ├── Input.js
+│       ├── Track.js
+│       └── World.js
+└── utils/
+    ├── artifactData.js
+    ├── artifactRoller.js
+    ├── authService.js
+    ├── damageCalculator.js
+    ├── firebaseService.js
+    └── racingService.js
 ```
 
-Setup checklist (Firebase Console):
+The active racing implementation is `src/racing/RacingGameV2.jsx`. Game-specific engine code lives under `src/racing/engine/`.
 
-1. Authentication -> Sign-in method: enable **Google** and **Email/Password**.
-2. Authentication -> Settings -> Authorized domains: add your live domain (for example your `*.vercel.app` URL).
-3. Realtime Database -> Rules: publish `database.rules.json`.
+## Accounts
 
-Scores are still calculated in the browser, so this stops impersonation and tampering with other players' records, but it is not full anti-cheat.
+The arcade uses Firebase Email/Password authentication.
 
-## Shared Firebase structure
+New accounts go through three steps:
+
+1. Create an account with an email and password.
+2. Verify the email address.
+3. Claim a permanent 3–16 character player name.
+
+The player name is shared across the arcade and is used for leaderboard and game data records.
+
+Google sign-in is intentionally not part of the current UI.
+
+## Firebase data layout
 
 ```text
-leaderboard/{userId}             # Artifact best only
-liveRolls/{rollId}               # Artifact observer feed
+usernames/{nameKey}                  -> owning Firebase UID
+users/{uid}/username                 -> permanent display name
+users/{uid}/usernameKey              -> deterministic username key
 
-racingLeaderboard/{userId}       # Racing best only
-racingQueue/{userId}             # Multiplayer queue
-racingMatches/{matchId}          # 2-player match state
+leaderboard/{userId}                -> best Artifact Roll score
+liveRolls/{rollId}                  -> recent artifact rolls
+
+racingLeaderboard/{userId}           -> best racing score
+racingQueue/{userId}                 -> 1v1 matchmaking queue
+racingMatches/{matchId}              -> multiplayer match state
+
+cardCollection/{userId}/{cardId}     -> card ownership
+cardCurrency/{userId}/spent          -> Arcade Points spent
 ```
 
-The browser uses the Firebase web SDK already loaded by `index.html`; no Firebase Admin credential is stored in the repository.
+The database rules are stored in `database.rules.json` and are intended to be published to Firebase Realtime Database.
 
-## Realtime Database rules
+## Security model
 
-`database.rules.json` now contains rules for both games. After pulling/deploying this version, publish the latest rules in **Firebase Console → Realtime Database → Rules**.
+The database rules are designed primarily around **account ownership**:
 
-The racing leaderboard uses the same one-user/highest-score pattern as the artifact leaderboard. Match/queue paths now require a signed-in participant, but they are still client-authoritative and not a cryptographically secure anti-cheat system.
+- a verified account can claim a username only once;
+- username records are bound to their Firebase UID;
+- player records are stored under deterministic username keys;
+- leaderboard writes are restricted to the account that owns the username;
+- account-only data such as card collections is restricted to its owner.
+
+There is an important limitation: several game results are calculated in the browser. That means this project is suitable for a casual arcade, but it is **not a secure anti-cheat system**. A determined attacker can modify client-side game code and attempt to submit manipulated game results.
+
+The racing multiplayer state is also client-authoritative. Do not treat the current leaderboard, currency, collection, or match data as suitable for a competitive economy without moving important validation to trusted server-side code.
+
+## Artifact Roll Simulator
+
+The artifact simulator models the five real slots:
+
+- Flower
+- Feather
+- Sands
+- Goblet
+- Circlet
+
+Main-stat pools and five-star stat ranges are kept in `src/utils/artifactData.js`.
+
+The roller is in `src/utils/artifactRoller.js`, while damage calculations are isolated in `src/utils/damageCalculator.js`.
+
+The artifact leaderboard stores each player's highest Melt Damage rather than every score.
+
+## Neon Mountain Racer
+
+The current racer includes:
+
+- 3D mountain circuit
+- Three laps
+- Simplified force-based vehicle physics
+- Tire grip and lateral slip
+- Collision impulses
+- AI drivers using the same physics model
+- Procedural traffic and scenery
+- Minimap
+- Chase camera
+- Smoke, sparks, glow, and lighting effects
+- High FPS / Balanced / Better Quality graphics presets
+- Desktop keyboard controls
+- Touch controls
+- Racing leaderboard
+- Firebase matchmaking and live opponent state
+
+The racing engine is separated into small systems so physics, AI, graphics, input, camera, track generation, and world building can evolve independently.
+
+## Elementals card game
+
+Elementals currently has:
+
+- 35 collectible cards
+- 5 rarities
+- 7 elements
+- Five-card packs
+- Arcade Point spending
+- Persistent card collections
+- Elemental reaction-based battles
+- Random-opponent duel simulation
+
+Card definitions live in `src/cardgame/cards.js`, persistence helpers live in `src/cardgame/cardService.js`, and the main UI/gameplay is in `src/cardgame/CardGame.jsx`.
+
+## Arcade Points
+
+Arcade Points are currently derived from the player's saved best scores:
+
+- racing score contributes points based on score;
+- artifact Melt Damage contributes points based on damage;
+- points spent on card packs are tracked separately.
+
+This is a client-side economy for the current arcade and should not be treated as tamper-proof.
+
+## Background music
+
+Site-wide music is handled by `src/components/MusicPlayer.jsx`.
+
+The current file path is:
+
+```text
+public/music/background.mp3
+```
+
+The player:
+
+- stays mounted while switching between arcade screens;
+- loops the track;
+- remembers the on/off preference in `localStorage`;
+- retries playback after the first user interaction when browser autoplay rules block audible autoplay.
+
+Browsers can still require user interaction before allowing audible playback.
+
+## Favicon
+
+The current favicon files live in:
+
+```text
+public/favicon.ico
+public/favicon.png
+```
+
+They are referenced from `index.html`.
 
 ## Development
 
+Install dependencies:
+
 ```bash
 npm install
+```
+
+Start the Vite development server:
+
+```bash
 npm run dev
 ```
 
-Production build:
+Build the production bundle:
 
 ```bash
 npm run build
 ```
 
+Preview the production build locally:
+
+```bash
+npm run preview
+```
+
+## Continuous integration
+
+GitHub Actions runs the production build on pushes and pull requests targeting `main`.
+
+The workflow uses Node 20, installs from `package-lock.json`, and runs `npm run build`.
+
 ## Vercel
 
-The repository is already structured as a Vite app. When the GitHub repository is connected to a Vercel project with the normal Git integration enabled, pushes to the configured production branch can trigger a new deployment automatically. You can also redeploy manually from Vercel when needed.
+This is a Vite application and can be deployed directly from the GitHub repository to Vercel.
 
-No JSONBin environment variables are required anymore.
+The repository already contains:
 
-## Artifact Simulator notes
+- Vite configuration
+- production build script
+- GitHub Actions build verification
+- public static assets used by the games
 
-- Flower main stat: flat HP.
-- Feather main stat: flat ATK.
-- Sands: HP%, ATK%, DEF%, EM, or ER.
-- Goblet: HP%, ATK%, DEF%, EM, Pyro DMG%, or Physical DMG%.
-- Circlet: HP%, ATK%, DEF%, EM, CRIT Rate, CRIT DMG, or Healing Bonus.
-- A main stat cannot also be one of that piece's substats.
+No JSONBin backend is required by the current application.
 
-DEF/HP/EM/ER are displayed for realism but the current artifact damage model only uses the stats specified by the original simulator design.
+## Notes for contributors
 
+Keep game logic separated from presentation where practical.
 
-## Background music
+Before adding a large new feature:
 
-The app now has one site-wide music controller that stays mounted while switching between the arcade hub, Artifact Roll Simulator, and Neon Mountain Racer. Music can be played or stopped from the floating **MUSIC ON / MUSIC OFF** control, and the preference is remembered in the browser.
+1. Check whether the logic belongs in an existing utility, hook, service, or racing engine module.
+2. Avoid putting long-lived game loops directly into ordinary React render logic.
+3. Clean up event listeners, timers, animation frames, and Three.js resources when a game is unmounted.
+4. Update this README when the architecture or game list changes.
 
-To add your music later:
+## Current status
 
-1. Create/open the folder `public/music/`.
-2. Put your music file there as `background.mp3`.
-3. Run/build the project normally.
-
-The exact path is:
-
-```
-public/music/background.mp3
-```
-
-You can use a different filename or supported browser audio format by changing `MUSIC_SRC` at the top of `src/components/MusicPlayer.jsx`.
-
-Because browsers commonly block autoplay until the visitor interacts with the page, the first click/tap/keypress will unlock playback when music is enabled. The player is global, so entering or leaving either game does not restart the music.
+This is an actively evolving personal arcade project. The emphasis is on learning, experimentation, and adding complete playable systems while keeping the code understandable enough to continue improving over time.
